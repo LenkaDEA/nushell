@@ -1,0 +1,15 @@
+[package]
+
+name = "peresil"
+version = "0.3.0"
+authors = ["Jake Goulding <jake.goulding@gmail.com>"]
+
+description = "A simple and simplistic string parsing library"
+readme = "README.md"
+keywords = ["parser"]
+
+homepage = "https://github.com/shepmaster/peresil"
+repository = "https://github.com/shepmaster/peresil"
+documentation = "https://shepmaster.github.io/peresil/"
+
+license = "MIT"
