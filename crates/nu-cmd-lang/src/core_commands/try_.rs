@@ -1,5 +1,5 @@
 use nu_engine::{command_prelude::*, get_eval_block, EvalBlockFn};
-use nu_protocol::engine::Closure;
+use nu_protocol::engine::{Closure, CommandType};
 
 #[derive(Clone)]
 pub struct Try;
@@ -31,6 +31,15 @@ impl Command for Try {
             .category(Category::Core)
     }
 
+    fn extra_usage(&self) -> &str {
+        r#"This command is a parser keyword. For details, check:
+  https://www.nushell.sh/book/thinking_in_nu.html"#
+    }
+
+    fn command_type(&self) -> CommandType {
+        CommandType::Keyword
+    }
+
     fn run(
         &self,
         engine_state: &EngineState,
@@ -38,6 +47,9 @@ impl Command for Try {
         call: &Call,
         input: PipelineData,
     ) -> Result<PipelineData, ShellError> {
+        // This is compiled specially by the IR compiler. The code here is never used when
+        // running in IR mode.
+        let call = call.assert_ast_call()?;
         let try_block = call
             .positional_nth(0)
             .expect("checked through parser")
