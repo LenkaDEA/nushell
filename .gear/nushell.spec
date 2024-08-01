@@ -2,7 +2,7 @@
 %def_with check
 
 Name: nushell
-Version: 0.95.0
+Version: 0.96.1
 Release: alt1
 
 Summary: A new type of shell
@@ -49,6 +49,9 @@ cargo test --workspace
 %doc README.md CONTRIBUTING.md CODE_OF_CONDUCT.md
 
 %changelog
+* Wed Jul 31 2024 Elena Dyatlenko <lenka@altlinux.org> 0.96.1-alt1
+- Updated to upstream version 0.96.1
+
 * Mon Jul 08 2024 Elena Dyatlenko <lenka@altlinux.org> 0.95.0-alt1
 - Initial build for Sisyphus
 
