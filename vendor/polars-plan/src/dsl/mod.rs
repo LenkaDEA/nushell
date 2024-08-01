@@ -56,6 +56,8 @@ pub use list::*;
 pub use meta::*;
 pub use name::*;
 pub use options::*;
+use polars_core::chunked_array::cast::CastOptions;
+use polars_core::error::feature_gated;
 use polars_core::prelude::*;
 #[cfg(feature = "diff")]
 use polars_core::series::ops::NullBehavior;
@@ -67,7 +69,7 @@ pub use struct_::*;
 pub use udf::UserDefinedFunction;
 
 use crate::constants::MAP_LIST_NAME;
-pub use crate::logical_plan::lit;
+pub use crate::plans::lit;
 use crate::prelude::*;
 
 impl Expr {
@@ -366,7 +368,7 @@ impl Expr {
                 collect_groups: ApplyOptions::GroupWise,
                 returns_scalar: true,
                 fmt_str: "search_sorted",
-                cast_to_supertypes: true,
+                cast_to_supertypes: Some(Default::default()),
                 ..Default::default()
             },
         }
@@ -378,7 +380,7 @@ impl Expr {
         Expr::Cast {
             expr: Arc::new(self),
             data_type,
-            strict: true,
+            options: CastOptions::Strict,
         }
     }
 
@@ -387,7 +389,16 @@ impl Expr {
         Expr::Cast {
             expr: Arc::new(self),
             data_type,
-            strict: false,
+            options: CastOptions::NonStrict,
+        }
+    }
+
+    /// Cast expression to another data type.
+    pub fn cast_with_options(self, data_type: DataType, cast_options: CastOptions) -> Self {
+        Expr::Cast {
+            expr: Arc::new(self),
+            data_type,
+            options: cast_options,
         }
     }
 
@@ -449,8 +460,8 @@ impl Expr {
     ///
     /// This has time complexity `O(n + k log(n))`.
     #[cfg(feature = "top_k")]
-    pub fn top_k(self, k: Expr, sort_options: SortOptions) -> Self {
-        self.apply_many_private(FunctionExpr::TopK { sort_options }, &[k], false, false)
+    pub fn top_k(self, k: Expr) -> Self {
+        self.apply_many_private(FunctionExpr::TopK { descending: false }, &[k], false, false)
     }
 
     /// Returns the `k` largest rows by given column.
@@ -461,26 +472,19 @@ impl Expr {
         self,
         k: K,
         by: E,
-        sort_options: SortMultipleOptions,
+        descending: Vec<bool>,
     ) -> Self {
         let mut args = vec![k.into()];
         args.extend(by.as_ref().iter().map(|e| -> Expr { e.clone().into() }));
-        self.apply_many_private(FunctionExpr::TopKBy { sort_options }, &args, false, false)
+        self.apply_many_private(FunctionExpr::TopKBy { descending }, &args, false, false)
     }
 
     /// Returns the `k` smallest elements.
     ///
     /// This has time complexity `O(n + k log(n))`.
     #[cfg(feature = "top_k")]
-    pub fn bottom_k(self, k: Expr, sort_options: SortOptions) -> Self {
-        self.apply_many_private(
-            FunctionExpr::TopK {
-                sort_options: sort_options.with_order_reversed(),
-            },
-            &[k],
-            false,
-            false,
-        )
+    pub fn bottom_k(self, k: Expr) -> Self {
+        self.apply_many_private(FunctionExpr::TopK { descending: true }, &[k], false, false)
     }
 
     /// Returns the `k` smallest rows by given column.
@@ -492,18 +496,12 @@ impl Expr {
         self,
         k: K,
         by: E,
-        sort_options: SortMultipleOptions,
+        descending: Vec<bool>,
     ) -> Self {
         let mut args = vec![k.into()];
         args.extend(by.as_ref().iter().map(|e| -> Expr { e.clone().into() }));
-        self.apply_many_private(
-            FunctionExpr::TopKBy {
-                sort_options: sort_options.with_order_reversed(),
-            },
-            &args,
-            false,
-            false,
-        )
+        let descending = descending.into_iter().map(|x| !x).collect();
+        self.apply_many_private(FunctionExpr::TopKBy { descending }, &args, false, false)
     }
 
     /// Reverse column
@@ -687,6 +685,12 @@ impl Expr {
         input.push(self);
         input.extend_from_slice(arguments);
 
+        let cast_to_supertypes = if cast_to_supertypes {
+            Some(Default::default())
+        } else {
+            None
+        };
+
         Expr::Function {
             input,
             function: function_expr,
@@ -709,6 +713,12 @@ impl Expr {
         let mut input = Vec::with_capacity(arguments.len() + 1);
         input.push(self);
         input.extend_from_slice(arguments);
+
+        let cast_to_supertypes = if cast_to_supertypes {
+            Some(Default::default())
+        } else {
+            None
+        };
 
         Expr::Function {
             input,
@@ -801,13 +811,13 @@ impl Expr {
         self.function_with_options(
             move |s: Series| Some(s.product().map(|sc| sc.into_series(s.name()))).transpose(),
             GetOutput::map_dtype(|dt| {
-                use DataType::*;
-                match dt {
-                    Float32 => Float32,
-                    Float64 => Float64,
-                    UInt64 => UInt64,
-                    _ => Int64,
-                }
+                use DataType as T;
+                Ok(match dt {
+                    T::Float32 => T::Float32,
+                    T::Float64 => T::Float64,
+                    T::UInt64 => T::UInt64,
+                    _ => T::Int64,
+                })
             }),
             options,
         )
@@ -952,12 +962,13 @@ impl Expr {
     /// ╰────────┴────────╯
     /// ```
     pub fn over<E: AsRef<[IE]>, IE: Into<Expr> + Clone>(self, partition_by: E) -> Self {
-        self.over_with_options(partition_by, Default::default())
+        self.over_with_options(partition_by, None, Default::default())
     }
 
     pub fn over_with_options<E: AsRef<[IE]>, IE: Into<Expr> + Clone>(
         self,
         partition_by: E,
+        order_by: Option<(E, SortOptions)>,
         options: WindowMapping,
     ) -> Self {
         let partition_by = partition_by
@@ -965,9 +976,24 @@ impl Expr {
             .iter()
             .map(|e| e.clone().into())
             .collect();
+
+        let order_by = order_by.map(|(e, options)| {
+            let e = e.as_ref();
+            let e = if e.len() == 1 {
+                Arc::new(e[0].clone().into())
+            } else {
+                feature_gated!["dtype-struct", {
+                    let e = e.iter().map(|e| e.clone().into()).collect::<Vec<_>>();
+                    Arc::new(as_struct(e))
+                }]
+            };
+            (e, options)
+        });
+
         Expr::Window {
             function: Arc::new(self),
             partition_by,
+            order_by,
             options: options.into(),
         }
     }
@@ -980,6 +1006,7 @@ impl Expr {
         Expr::Window {
             function: Arc::new(self),
             partition_by: vec![index_col],
+            order_by: None,
             options: WindowType::Rolling(options),
         }
     }
@@ -992,7 +1019,7 @@ impl Expr {
             function: FunctionExpr::FillNull,
             options: FunctionOptions {
                 collect_groups: ApplyOptions::ElementWise,
-                cast_to_supertypes: true,
+                cast_to_supertypes: Some(Default::default()),
                 ..Default::default()
             },
         }
@@ -1253,6 +1280,12 @@ impl Expr {
         )
     }
 
+    #[cfg(feature = "interpolate_by")]
+    /// Fill null values using interpolation.
+    pub fn interpolate_by(self, by: Expr) -> Expr {
+        self.apply_many_private(FunctionExpr::InterpolateBy, &[by], false, false)
+    }
+
     #[cfg(feature = "rolling_window")]
     #[allow(clippy::type_complexity)]
     fn finish_rolling(
@@ -1447,10 +1480,12 @@ impl Expr {
                     Ok(Some(out))
                 }
             },
-            GetOutput::map_field(|field| match field.data_type() {
-                DataType::Float64 => field.clone(),
-                DataType::Float32 => Field::new(field.name(), DataType::Float32),
-                _ => Field::new(field.name(), DataType::Float64),
+            GetOutput::map_field(|field| {
+                Ok(match field.data_type() {
+                    DataType::Float64 => field.clone(),
+                    DataType::Float32 => Field::new(field.name(), DataType::Float32),
+                    _ => Field::new(field.name(), DataType::Float64),
+                })
             }),
         )
         .with_fmt("rolling_map_float")
@@ -1474,7 +1509,25 @@ impl Expr {
 
     #[cfg(feature = "replace")]
     /// Replace the given values with other values.
-    pub fn replace<E: Into<Expr>>(
+    pub fn replace<E: Into<Expr>>(self, old: E, new: E) -> Expr {
+        let old = old.into();
+        let new = new.into();
+
+        // If we search and replace by literals, we can run on batches.
+        let literal_searchers = matches!(&old, Expr::Literal(_)) & matches!(&new, Expr::Literal(_));
+
+        let args = [old, new];
+
+        if literal_searchers {
+            self.map_many_private(FunctionExpr::Replace, &args, false, false)
+        } else {
+            self.apply_many_private(FunctionExpr::Replace, &args, false, false)
+        }
+    }
+
+    #[cfg(feature = "replace")]
+    /// Replace the given values with other values.
+    pub fn replace_strict<E: Into<Expr>>(
         self,
         old: E,
         new: E,
@@ -1483,7 +1536,8 @@ impl Expr {
     ) -> Expr {
         let old = old.into();
         let new = new.into();
-        // If we search and replace by literals, we can run on batches.
+
+        // If we replace by literals, we can run on batches.
         let literal_searchers = matches!(&old, Expr::Literal(_)) & matches!(&new, Expr::Literal(_));
 
         let mut args = vec![old, new];
@@ -1492,9 +1546,19 @@ impl Expr {
         }
 
         if literal_searchers {
-            self.map_many_private(FunctionExpr::Replace { return_dtype }, &args, false, false)
+            self.map_many_private(
+                FunctionExpr::ReplaceStrict { return_dtype },
+                &args,
+                false,
+                false,
+            )
         } else {
-            self.apply_many_private(FunctionExpr::Replace { return_dtype }, &args, false, false)
+            self.apply_many_private(
+                FunctionExpr::ReplaceStrict { return_dtype },
+                &args,
+                false,
+                false,
+            )
         }
     }
 
@@ -1634,9 +1698,9 @@ impl Expr {
         self.map_private(FunctionExpr::LowerBound)
     }
 
-    pub fn reshape(self, dimensions: &[i64]) -> Self {
+    pub fn reshape(self, dimensions: &[i64], nested_type: NestedType) -> Self {
         let dimensions = dimensions.to_vec();
-        self.apply_private(FunctionExpr::Reshape(dimensions))
+        self.apply_private(FunctionExpr::Reshape(dimensions, nested_type))
     }
 
     #[cfg(feature = "ewma")]
@@ -1708,12 +1772,17 @@ impl Expr {
     #[cfg(feature = "dtype-struct")]
     /// Count all unique values and create a struct mapping value to count.
     /// (Note that it is better to turn parallel off in the aggregation context).
-    pub fn value_counts(self, sort: bool, parallel: bool) -> Self {
-        self.apply_private(FunctionExpr::ValueCounts { sort, parallel })
-            .with_function_options(|mut opts| {
-                opts.pass_name_to_apply = true;
-                opts
-            })
+    pub fn value_counts(self, sort: bool, parallel: bool, name: String, normalize: bool) -> Self {
+        self.apply_private(FunctionExpr::ValueCounts {
+            sort,
+            parallel,
+            name,
+            normalize,
+        })
+        .with_function_options(|mut opts| {
+            opts.pass_name_to_apply = true;
+            opts
+        })
     }
 
     #[cfg(feature = "unique_counts")]

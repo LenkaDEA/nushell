@@ -75,6 +75,10 @@ pub enum PolarsError {
     SchemaMismatch(ErrString),
     #[error("lengths don't match: {0}")]
     ShapeMismatch(ErrString),
+    #[error("{0}")]
+    SQLInterface(ErrString),
+    #[error("{0}")]
+    SQLSyntax(ErrString),
     #[error("string caches don't match: {0}")]
     StringCacheMismatch(ErrString),
     #[error("field not found: {0}")]
@@ -198,6 +202,8 @@ impl PolarsError {
             ShapeMismatch(msg) => ShapeMismatch(func(msg).into()),
             StringCacheMismatch(msg) => StringCacheMismatch(func(msg).into()),
             StructFieldNotFound(msg) => StructFieldNotFound(func(msg).into()),
+            SQLInterface(msg) => SQLInterface(func(msg).into()),
+            SQLSyntax(msg) => SQLSyntax(func(msg).into()),
             _ => unreachable!(),
         }
     }
@@ -263,6 +269,11 @@ macro_rules! polars_err {
     (op = $op:expr, $arg:expr) => {
         $crate::polars_err!(
             InvalidOperation: "{} operation not supported for dtype `{}`", $op, $arg
+        )
+    };
+    (op = $op:expr, $arg:expr, hint = $hint:literal) => {
+        $crate::polars_err!(
+            InvalidOperation: "{} operation not supported for dtype `{}`\n\nHint: {}", $op, $arg, $hint
         )
     };
     (op = $op:expr, $lhs:expr, $rhs:expr) => {

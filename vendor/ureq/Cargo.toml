@@ -11,9 +11,9 @@
 
 [package]
 edition = "2018"
-rust-version = "1.61"
+rust-version = "1.63"
 name = "ureq"
-version = "2.9.7"
+version = "2.10.0"
 authors = [
     "Martin Algesten <martin@algesten.se>",
     "Jacob Hoffman-Andrews <ureq@hoffman-andrews.com>",
@@ -47,6 +47,7 @@ features = [
     "gzip",
     "brotli",
     "http-interop",
+    "http-crate",
 ]
 rustdoc-args = [
     "--cfg",
@@ -73,7 +74,7 @@ required-features = [
 version = "0.22"
 
 [dependencies.brotli-decompressor]
-version = "2.3.2"
+version = "4.0.0"
 optional = true
 
 [dependencies.cookie]
@@ -100,7 +101,7 @@ version = "0.1.5"
 optional = true
 
 [dependencies.http]
-version = "1.0"
+version = "1.1"
 optional = true
 
 [dependencies.http-02]
@@ -119,8 +120,15 @@ optional = true
 version = "1"
 
 [dependencies.rustls]
-version = "0.22.4"
+version = "0.23.5"
+features = [
+    "ring",
+    "logging",
+    "std",
+    "tls12",
+]
 optional = true
+default-features = false
 
 [dependencies.rustls-native-certs]
 version = "0.7"
@@ -145,11 +153,6 @@ optional = true
 [dependencies.url]
 version = "2"
 
-[dependencies.webpki]
-version = "0.102"
-optional = true
-package = "rustls-webpki"
-
 [dependencies.webpki-roots]
 version = "0.26"
 optional = true
@@ -158,7 +161,12 @@ optional = true
 version = "<=0.9"
 
 [dev-dependencies.rustls]
-version = "0.22.0"
+version = "0.23.5"
+features = [
+    "std",
+    "ring",
+]
+default-features = false
 
 [dev-dependencies.rustls-pemfile]
 version = "2.0"
@@ -191,7 +199,6 @@ proxy-from-env = []
 socks-proxy = ["dep:socks"]
 testdeps = ["dep:hootbin"]
 tls = [
-    "dep:webpki",
     "dep:webpki-roots",
     "dep:rustls",
     "dep:rustls-pki-types",

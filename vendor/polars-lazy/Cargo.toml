@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-lazy"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -45,7 +45,6 @@ features = [
     "cum_agg",
     "cumulative_eval",
     "cutqcut",
-    "date_offset",
     "diagonal_concat",
     "diff",
     "dot_diagram",
@@ -58,6 +57,7 @@ features = [
     "futures",
     "hist",
     "interpolate",
+    "interpolate_by",
     "ipc",
     "is_first_distinct",
     "is_in",
@@ -77,8 +77,11 @@ features = [
     "meta",
     "mode",
     "moment",
+    "month_start",
+    "month_end",
     "nightly",
     "object",
+    "offset_by",
     "panic_on_schema",
     "parquet",
     "pct_change",
@@ -129,7 +132,7 @@ path = "src/lib.rs"
 version = ">=0.8.5"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -152,11 +155,14 @@ optional = true
 [dependencies.glob]
 version = "0.3"
 
+[dependencies.memchr]
+version = "2.6"
+
 [dependencies.once_cell]
 version = "1"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "lazy",
     "zip_with",
@@ -165,40 +171,49 @@ features = [
 default-features = false
 
 [dependencies.polars-expr]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-io]
-version = "0.40.0"
+version = "0.41.2"
 features = ["lazy"]
 default-features = false
 
 [dependencies.polars-json]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
+[dependencies.polars-mem-engine]
+version = "0.41.2"
+default-features = false
+
 [dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 features = ["chunked_ids"]
 default-features = false
 
 [dependencies.polars-pipe]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-plan]
-version = "0.40.0"
+version = "0.41.2"
+default-features = false
+
+[dependencies.polars-stream]
+version = "0.41.2"
+optional = true
 default-features = false
 
 [dependencies.polars-time]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.pyo3]
@@ -240,11 +255,13 @@ asof_join = [
     "polars-plan/asof_join",
     "polars-time",
     "polars-ops/asof_join",
+    "polars-mem-engine/asof_join",
 ]
 async = [
     "polars-plan/async",
     "polars-io/cloud",
     "polars-pipe?/async",
+    "polars-mem-engine/async",
 ]
 bigidx = ["polars-plan/bigidx"]
 binary_encoding = ["polars-plan/binary_encoding"]
@@ -255,6 +272,7 @@ cloud = [
     "polars-plan/cloud",
     "tokio",
     "futures",
+    "polars-mem-engine/cloud",
 ]
 cloud_write = ["cloud"]
 coalesce = ["polars-plan/coalesce"]
@@ -268,11 +286,15 @@ cross_join = [
     "polars-pipe?/cross_join",
     "polars-ops/cross_join",
 ]
-cse = ["polars-plan/cse"]
+cse = [
+    "polars-plan/cse",
+    "polars-mem-engine/cse",
+]
 csv = [
     "polars-io/csv",
     "polars-plan/csv",
     "polars-pipe?/csv",
+    "polars-mem-engine/csv",
 ]
 cum_agg = ["polars-plan/cum_agg"]
 cumulative_eval = []
@@ -280,7 +302,6 @@ cutqcut = [
     "polars-plan/cutqcut",
     "polars-ops/cutqcut",
 ]
-date_offset = ["polars-plan/date_offset"]
 diagonal_concat = []
 diff = [
     "polars-plan/diff",
@@ -297,29 +318,34 @@ dtype-categorical = [
     "polars-plan/dtype-categorical",
     "polars-pipe?/dtype-categorical",
     "polars-expr/dtype-categorical",
+    "polars-mem-engine/dtype-categorical",
 ]
 dtype-date = [
     "polars-plan/dtype-date",
     "polars-time/dtype-date",
     "temporal",
     "polars-expr/dtype-date",
+    "polars-mem-engine/dtype-date",
 ]
 dtype-datetime = [
     "polars-plan/dtype-datetime",
     "polars-time/dtype-datetime",
     "temporal",
     "polars-expr/dtype-datetime",
+    "polars-mem-engine/dtype-datetime",
 ]
 dtype-decimal = [
     "polars-plan/dtype-decimal",
     "polars-pipe?/dtype-decimal",
     "polars-expr/dtype-decimal",
+    "polars-mem-engine/dtype-decimal",
 ]
 dtype-duration = [
     "polars-plan/dtype-duration",
     "polars-time/dtype-duration",
     "temporal",
     "polars-expr/dtype-duration",
+    "polars-mem-engine/dtype-duration",
 ]
 dtype-full = [
     "dtype-array",
@@ -339,38 +365,45 @@ dtype-i16 = [
     "polars-plan/dtype-i16",
     "polars-pipe?/dtype-i16",
     "polars-expr/dtype-i16",
+    "polars-mem-engine/dtype-i16",
 ]
 dtype-i8 = [
     "polars-plan/dtype-i8",
     "polars-pipe?/dtype-i8",
     "polars-expr/dtype-i8",
+    "polars-mem-engine/dtype-i8",
 ]
 dtype-struct = [
     "polars-plan/dtype-struct",
     "polars-ops/dtype-struct",
     "polars-expr/dtype-struct",
+    "polars-mem-engine/dtype-struct",
 ]
 dtype-time = [
     "polars-plan/dtype-time",
     "polars-time/dtype-time",
     "temporal",
     "polars-expr/dtype-time",
+    "polars-mem-engine/dtype-time",
 ]
 dtype-u16 = [
     "polars-plan/dtype-u16",
     "polars-pipe?/dtype-u16",
     "polars-expr/dtype-u16",
+    "polars-mem-engine/dtype-u16",
 ]
 dtype-u8 = [
     "polars-plan/dtype-u8",
     "polars-pipe?/dtype-u8",
     "polars-expr/dtype-u8",
+    "polars-mem-engine/dtype-u8",
 ]
 dynamic_group_by = [
     "polars-plan/dynamic_group_by",
     "polars-time",
     "temporal",
     "polars-expr/dynamic_group_by",
+    "polars-mem-engine/dynamic_group_by",
 ]
 ewma = ["polars-plan/ewma"]
 ewma_by = ["polars-plan/ewma_by"]
@@ -390,10 +423,12 @@ fused = [
 future = []
 hist = ["polars-plan/hist"]
 interpolate = ["polars-plan/interpolate"]
+interpolate_by = ["polars-plan/interpolate_by"]
 ipc = [
     "polars-io/ipc",
     "polars-plan/ipc",
     "polars-pipe?/ipc",
+    "polars-mem-engine/ipc",
 ]
 is_between = [
     "polars-plan/is_between",
@@ -412,6 +447,7 @@ json = [
     "polars-plan/json",
     "polars-json",
     "polars-pipe?/json",
+    "polars-mem-engine/json",
 ]
 list_any_all = [
     "polars-ops/list_any_all",
@@ -447,12 +483,19 @@ moment = [
     "polars-plan/moment",
     "polars-ops/moment",
 ]
+month_end = ["polars-plan/month_end"]
+month_start = ["polars-plan/month_start"]
+new_streaming = ["polars-stream"]
 nightly = [
     "polars-core/nightly",
     "polars-pipe?/nightly",
     "polars-plan/nightly",
 ]
-object = ["polars-plan/object"]
+object = [
+    "polars-plan/object",
+    "polars-mem-engine/object",
+]
+offset_by = ["polars-plan/offset_by"]
 panic_on_schema = [
     "polars-plan/panic_on_schema",
     "polars-expr/panic_on_schema",
@@ -462,6 +505,7 @@ parquet = [
     "polars-plan/parquet",
     "polars-pipe?/parquet",
     "polars-expr/parquet",
+    "polars-mem-engine/parquet",
 ]
 pct_change = ["polars-plan/pct_change"]
 peaks = ["polars-plan/peaks"]
@@ -478,6 +522,7 @@ python = [
     "polars-plan/python",
     "polars-core/python",
     "polars-io/python",
+    "polars-mem-engine/python",
 ]
 random = ["polars-plan/random"]
 range = ["polars-plan/range"]

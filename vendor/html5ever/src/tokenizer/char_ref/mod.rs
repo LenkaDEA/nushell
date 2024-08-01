@@ -18,18 +18,18 @@ use std::borrow::Cow::Borrowed;
 use std::char::from_u32;
 
 use self::State::*;
-pub use self::Status::*;
+pub(super) use self::Status::*;
 
 //§ tokenizing-character-references
-pub struct CharRef {
+pub(super) struct CharRef {
     /// The resulting character(s)
-    pub chars: [char; 2],
+    pub(super) chars: [char; 2],
 
     /// How many slots in `chars` are valid?
-    pub num_chars: u8,
+    pub(super) num_chars: u8,
 }
 
-pub enum Status {
+pub(super) enum Status {
     Stuck,
     Progress,
     Done,
@@ -45,10 +45,10 @@ enum State {
     BogusName,
 }
 
-pub struct CharRefTokenizer {
+pub(super) struct CharRefTokenizer {
     state: State,
-    addnl_allowed: Option<char>,
     result: Option<CharRef>,
+    is_consumed_in_attribute: bool,
 
     num: u32,
     num_too_big: bool,
@@ -61,12 +61,10 @@ pub struct CharRefTokenizer {
 }
 
 impl CharRefTokenizer {
-    // NB: We assume that we have an additional allowed character iff we're
-    // tokenizing in an attribute value.
-    pub fn new(addnl_allowed: Option<char>) -> CharRefTokenizer {
+    pub(super) fn new(is_consumed_in_attribute: bool) -> CharRefTokenizer {
         CharRefTokenizer {
+            is_consumed_in_attribute,
             state: Begin,
-            addnl_allowed,
             result: None,
             num: 0,
             num_too_big: false,
@@ -80,7 +78,7 @@ impl CharRefTokenizer {
 
     // A CharRefTokenizer can only tokenize one character reference,
     // so this method consumes the tokenizer.
-    pub fn get_result(self) -> CharRef {
+    pub(super) fn get_result(self) -> CharRef {
         self.result.expect("get_result called before done")
     }
 
@@ -114,7 +112,7 @@ impl CharRefTokenizer {
 }
 
 impl CharRefTokenizer {
-    pub fn step<Sink: TokenSink>(
+    pub(super) fn step<Sink: TokenSink>(
         &mut self,
         tokenizer: &mut Tokenizer<Sink>,
         input: &mut BufferQueue,
@@ -140,20 +138,18 @@ impl CharRefTokenizer {
         input: &mut BufferQueue,
     ) -> Status {
         match unwrap_or_return!(tokenizer.peek(input), Stuck) {
-            '\t' | '\n' | '\x0C' | ' ' | '<' | '&' => self.finish_none(),
-            c if Some(c) == self.addnl_allowed => self.finish_none(),
+            'a'..='z' | 'A'..='Z' | '0'..='9' => {
+                self.state = Named;
+                self.name_buf_opt = Some(StrTendril::new());
+                Progress
+            },
 
             '#' => {
                 tokenizer.discard_char(input);
                 self.state = Octothorpe;
                 Progress
             },
-
-            _ => {
-                self.state = Named;
-                self.name_buf_opt = Some(StrTendril::new());
-                Progress
-            },
+            _ => self.finish_none(),
         }
     }
 
@@ -228,9 +224,8 @@ impl CharRefTokenizer {
         input: &mut BufferQueue,
     ) -> Status {
         let mut unconsume = StrTendril::from_char('#');
-        match self.hex_marker {
-            Some(c) => unconsume.push_char(c),
-            None => (),
+        if let Some(c) = self.hex_marker {
+            unconsume.push_char(c)
         }
 
         input.push_front(unconsume);
@@ -277,7 +272,10 @@ impl CharRefTokenizer {
         tokenizer: &mut Tokenizer<Sink>,
         input: &mut BufferQueue,
     ) -> Status {
-        let c = unwrap_or_return!(tokenizer.get_char(input), Stuck);
+        // peek + discard skips over newline normalization, therefore making it easier to
+        // un-consume
+        let c = unwrap_or_return!(tokenizer.peek(input), Stuck);
+        tokenizer.discard_char(input);
         self.name_buf_mut().push_char(c);
         match data::NAMED_ENTITIES.get(&self.name_buf()[..]) {
             // We have either a full match or a prefix of one.
@@ -356,26 +354,21 @@ impl CharRefTokenizer {
                     Some(self.name_buf()[name_len..].chars().next().unwrap())
                 };
 
-                // "If the character reference is being consumed as part of an
-                // attribute, and the last character matched is not a U+003B
-                // SEMICOLON character (;), and the next character is either a
-                // U+003D EQUALS SIGN character (=) or an alphanumeric ASCII
-                // character, then, for historical reasons, all the characters
-                // that were matched after the U+0026 AMPERSAND character (&)
-                // must be unconsumed, and nothing is returned. However, if
-                // this next character is in fact a U+003D EQUALS SIGN
-                // character (=), then this is a parse error"
+                // If the character reference was consumed as part of an attribute, and the last
+                // character matched is not a U+003B SEMICOLON character (;), and the next input
+                // character is either a U+003D EQUALS SIGN character (=) or an ASCII alphanumeric,
+                // then, for historical reasons, flush code points consumed as a character
+                // reference and switch to the return state.
 
-                let unconsume_all = match (self.addnl_allowed, last_matched, next_after) {
+                let unconsume_all = match (self.is_consumed_in_attribute, last_matched, next_after)
+                {
                     (_, ';', _) => false,
-                    (Some(_), _, Some('=')) => {
-                        tokenizer.emit_error(Borrowed(
-                            "Equals sign after character reference in attribute",
-                        ));
-                        true
-                    },
-                    (Some(_), _, Some(c)) if c.is_ascii_alphanumeric() => true,
+                    (true, _, Some('=')) => true,
+                    (true, _, Some(c)) if c.is_ascii_alphanumeric() => true,
                     _ => {
+                        // 1. If the last character matched is not a U+003B SEMICOLON character
+                        //    (;), then this is a missing-semicolon-after-character-reference parse
+                        //    error.
                         tokenizer.emit_error(Borrowed(
                             "Character reference does not end with semicolon",
                         ));
@@ -388,6 +381,7 @@ impl CharRefTokenizer {
                     self.finish_none()
                 } else {
                     input.push_front(StrTendril::from_slice(&self.name_buf()[name_len..]));
+                    tokenizer.ignore_lf = false;
                     self.result = Some(CharRef {
                         chars: [from_u32(c1).unwrap(), from_u32(c2).unwrap()],
                         num_chars: if c2 == 0 { 1 } else { 2 },
@@ -403,7 +397,10 @@ impl CharRefTokenizer {
         tokenizer: &mut Tokenizer<Sink>,
         input: &mut BufferQueue,
     ) -> Status {
-        let c = unwrap_or_return!(tokenizer.get_char(input), Stuck);
+        // peek + discard skips over newline normalization, therefore making it easier to
+        // un-consume
+        let c = unwrap_or_return!(tokenizer.peek(input), Stuck);
+        tokenizer.discard_char(input);
         self.name_buf_mut().push_char(c);
         match c {
             _ if c.is_ascii_alphanumeric() => return Progress,
@@ -414,7 +411,7 @@ impl CharRefTokenizer {
         self.finish_none()
     }
 
-    pub fn end_of_file<Sink: TokenSink>(
+    pub(super) fn end_of_file<Sink: TokenSink>(
         &mut self,
         tokenizer: &mut Tokenizer<Sink>,
         input: &mut BufferQueue,

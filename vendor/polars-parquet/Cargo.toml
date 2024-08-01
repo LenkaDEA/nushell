@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-parquet"
-version = "0.40.0"
+version = "0.41.2"
 authors = [
     "Jorge C. Leitao <jorgecarleitao@gmail.com>",
     "Apache Arrow <dev@arrow.apache.org>",
@@ -37,7 +37,7 @@ path = "src/lib.rs"
 version = ">=0.8.5"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -92,12 +92,16 @@ version = "0.2"
 [dependencies.parquet-format-safe]
 version = "0.2"
 
+[dependencies.polars-compute]
+version = "0.41.2"
+default-features = false
+
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.seq-macro]

@@ -45,7 +45,7 @@ fn round_trip_opt_stats(
     let schema = ArrowSchema::from(vec![field]);
 
     let options = WriteOptions {
-        write_statistics: true,
+        statistics: StatisticsOptions::full(),
         compression,
         version,
         data_pagesize_limit: None,
@@ -65,6 +65,8 @@ fn round_trip_opt_stats(
     writer.end(None)?;
 
     let data = writer.into_inner().into_inner();
+
+    std::fs::write("list_struct_list_nullable.parquet", &data).unwrap();
 
     let (result, stats) = read_column(&mut Cursor::new(data), "a1")?;
 

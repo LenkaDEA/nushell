@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-utils"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -58,7 +58,7 @@ version = "0.2"
 version = "1"
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.raw-cpuid]

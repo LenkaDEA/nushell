@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "uu_whoami"
-version = "0.0.26"
+version = "0.0.27"
 authors = ["uutils developers"]
 description = "whoami ~ (uutils) display user name of current effective user ID"
 homepage = "https://github.com/uutils/coreutils"

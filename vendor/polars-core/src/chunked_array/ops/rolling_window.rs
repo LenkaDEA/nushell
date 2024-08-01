@@ -53,6 +53,7 @@ mod inner_mod {
     use num_traits::{Float, Zero};
     use polars_utils::float::IsFloat;
 
+    use crate::chunked_array::cast::CastOptions;
     use crate::prelude::*;
 
     /// utility
@@ -97,7 +98,7 @@ mod inner_mod {
             if options.weights.is_some()
                 && !matches!(self.dtype(), DataType::Float64 | DataType::Float32)
             {
-                let s = self.cast(&DataType::Float64)?;
+                let s = self.cast_with_options(&DataType::Float64, CastOptions::NonStrict)?;
                 return s.rolling_map(f, options);
             }
 
@@ -140,7 +141,7 @@ mod inner_mod {
                             *ptr = arr_window;
                         }
                         // reset flags as we reuse this container
-                        series_container.clear_settings();
+                        series_container.clear_flags();
                         // ensure the length is correct
                         series_container._get_inner_mut().compute_len();
                         let s = if size == options.window_size {
@@ -194,7 +195,7 @@ mod inner_mod {
                             *ptr = arr_window;
                         }
                         // reset flags as we reuse this container
-                        series_container.clear_settings();
+                        series_container.clear_flags();
                         // ensure the length is correct
                         series_container._get_inner_mut().compute_len();
                         let s = f(&series_container);

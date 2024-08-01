@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.62"
 name = "open"
-version = "5.1.2"
+version = "5.3.0"
 authors = ["Sebastian Thiel <byronimo@gmail.com>"]
 include = [
     "src/**/*",
@@ -43,7 +43,7 @@ shellexecute-on-windows = []
 [target."cfg(all(unix, not(macos)))".dependencies.pathdiff]
 version = "0.2.0"
 
-[target."cfg(any(target_os = \"linux\", target_os = \"android\", target_os = \"freebsd\", target_os = \"dragonfly\", target_os = \"netbsd\", target_os = \"openbsd\", target_os = \"illumos\", target_os = \"solaris\" ))".dependencies.is-wsl]
+[target."cfg(any(target_os = \"linux\", target_os = \"android\", target_os = \"freebsd\", target_os = \"dragonfly\", target_os = \"netbsd\", target_os = \"openbsd\", target_os = \"illumos\", target_os = \"solaris\", target_os = \"aix\", target_os = \"hurd\"))".dependencies.is-wsl]
 version = "0.4.0"
 
 [target."cfg(unix)".dependencies.libc]

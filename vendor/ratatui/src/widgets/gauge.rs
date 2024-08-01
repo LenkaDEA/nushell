@@ -17,7 +17,7 @@ use crate::{prelude::*, widgets::Block};
 /// use ratatui::{prelude::*, widgets::*};
 ///
 /// Gauge::default()
-///     .block(Block::default().borders(Borders::ALL).title("Progress"))
+///     .block(Block::bordered().title("Progress"))
 ///     .gauge_style(
 ///         Style::default()
 ///             .fg(Color::White)
@@ -30,6 +30,7 @@ use crate::{prelude::*, widgets::Block};
 /// # See also
 ///
 /// - [`LineGauge`] for a thin progress bar
+#[allow(clippy::struct_field_names)] // gauge_style needs to be differentiated to style
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gauge<'a> {
     block: Option<Block<'a>>,
@@ -164,12 +165,12 @@ impl WidgetRef for Gauge<'_> {
         buf.set_style(area, self.style);
         self.block.render_ref(area, buf);
         let inner = self.block.inner_if_some(area);
-        self.render_gague(inner, buf);
+        self.render_gauge(inner, buf);
     }
 }
 
 impl Gauge<'_> {
-    fn render_gague(&self, gauge_area: Rect, buf: &mut Buffer) {
+    fn render_gauge(&self, gauge_area: Rect, buf: &mut Buffer) {
         if gauge_area.is_empty() {
             return;
         }
@@ -249,7 +250,7 @@ fn get_unicode_block<'a>(frac: f64) -> &'a str {
 /// use ratatui::{prelude::*, widgets::*};
 ///
 /// LineGauge::default()
-///     .block(Block::default().borders(Borders::ALL).title("Progress"))
+///     .block(Block::bordered().title("Progress"))
 ///     .gauge_style(
 ///         Style::default()
 ///             .fg(Color::White)

@@ -7,14 +7,14 @@ use arrow::datatypes::ArrowSchemaRef;
 use polars_core::prelude::*;
 use polars_core::utils::{accumulate_dataframes_vertical, split_df};
 use polars_core::POOL;
-use polars_parquet::read;
-use polars_parquet::read::{ArrayIter, FileMetaData, RowGroupMetaData};
+use polars_parquet::read::{self, ArrayIter, FileMetaData, PhysicalType, RowGroupMetaData};
 use rayon::prelude::*;
 
 #[cfg(feature = "cloud")]
 use super::async_impl::FetchRowGroupsFromObjectStore;
 use super::mmap::{mmap_columns, ColumnStore};
 use super::predicates::read_this_row_group;
+use super::to_metadata::ToMetadata;
 use super::utils::materialize_empty_df;
 use super::{mmap, ParallelStrategy};
 use crate::mmap::{MmapBytesReader, ReaderBytes};
@@ -67,11 +67,54 @@ fn column_idx_to_series(
     let columns = mmap_columns(store, md.columns(), &field.name);
     let iter = mmap::to_deserializer(columns, field.clone(), remaining_rows, Some(chunk_size))?;
 
-    if remaining_rows < md.num_rows() {
+    let mut series = if remaining_rows < md.num_rows() {
         array_iter_to_series(iter, field, Some(remaining_rows))
     } else {
         array_iter_to_series(iter, field, None)
+    }?;
+
+    // See if we can find some statistics for this series. If we cannot find anything just return
+    // the series as is.
+    let Some(Ok(stats)) = md.columns()[column_i].statistics() else {
+        return Ok(series);
+    };
+
+    let series_trait = series.as_ref();
+
+    macro_rules! match_dtypes_into_metadata {
+        ($(($dtype:pat, $phystype:pat) => ($stats:ident, $pldtype:ty),)+) => {
+            match (series_trait.dtype(), stats.physical_type()) {
+                $(
+                ($dtype, $phystype) => {
+                    series.try_set_metadata(
+                        ToMetadata::<$pldtype>::to_metadata(stats.$stats())
+                    );
+                })+
+                _ => {},
+            }
+        };
     }
+
+    // Match the data types used by the Series and by the Statistics. If we find a match, set some
+    // Metadata for the underlying ChunkedArray.
+    use {DataType as D, PhysicalType as P};
+    match_dtypes_into_metadata! {
+        (D::Boolean, P::Boolean  ) => (expect_as_boolean, BooleanType),
+        (D::UInt8,   P::Int32    ) => (expect_as_int32,   UInt8Type  ),
+        (D::UInt16,  P::Int32    ) => (expect_as_int32,   UInt16Type ),
+        (D::UInt32,  P::Int32    ) => (expect_as_int32,   UInt32Type ),
+        (D::UInt64,  P::Int64    ) => (expect_as_int64,   UInt64Type ),
+        (D::Int8,    P::Int32    ) => (expect_as_int32,   Int8Type   ),
+        (D::Int16,   P::Int32    ) => (expect_as_int32,   Int16Type  ),
+        (D::Int32,   P::Int32    ) => (expect_as_int32,   Int32Type  ),
+        (D::Int64,   P::Int64    ) => (expect_as_int64,   Int64Type  ),
+        (D::Float32, P::Float    ) => (expect_as_float,   Float32Type),
+        (D::Float64, P::Double   ) => (expect_as_double,  Float64Type),
+        (D::String,  P::ByteArray) => (expect_as_binary,  StringType ),
+        (D::Binary,  P::ByteArray) => (expect_as_binary,  BinaryType ),
+    }
+
+    Ok(series)
 }
 
 pub(super) fn array_iter_to_series(
@@ -410,7 +453,7 @@ pub fn read_parquet<R: MmapBytesReader>(
         parallel = ParallelStrategy::None;
     }
 
-    let reader = ReaderBytes::from(&reader);
+    let reader = ReaderBytes::from(&mut reader);
     let bytes = reader.deref();
     let store = mmap::ColumnStore::Local(bytes);
 
@@ -727,19 +770,22 @@ impl BatchedParquetReader {
             skipped_all_rgs |= dfs.is_empty();
             for mut df in dfs {
                 // make sure that the chunks are not too large
-                let n = df.shape().0 / self.chunk_size;
+                let n = df.height() / self.chunk_size;
                 if n > 1 {
-                    for df in split_df(&mut df, n) {
+                    for df in split_df(&mut df, n, false) {
                         self.chunks_fifo.push_back(df)
                     }
                 } else {
                     self.chunks_fifo.push_back(df)
                 }
             }
+        } else {
+            skipped_all_rgs = !self.has_returned;
         };
 
         if self.chunks_fifo.is_empty() {
             if skipped_all_rgs {
+                self.has_returned = true;
                 Ok(Some(vec![materialize_empty_df(
                     Some(self.projection.as_ref()),
                     &self.schema,
@@ -760,7 +806,7 @@ impl BatchedParquetReader {
                 }
             }
 
-            self.has_returned |= true;
+            self.has_returned = true;
             Ok(Some(chunks))
         }
     }

@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use polars_core::config::verbose;
 use polars_core::prelude::*;
+use polars_expr::{create_physical_expr, ExpressionConversionState};
 use polars_io::predicates::{PhysicalIoExpr, StatsEvaluator};
 use polars_pipe::expressions::PhysicalPipedExpr;
 use polars_pipe::operators::chunks::DataChunk;
@@ -11,7 +12,6 @@ use polars_pipe::pipeline::{
 };
 use polars_plan::prelude::expr_ir::ExprIR;
 
-use crate::physical_plan::planner::{create_physical_expr, ExpressionConversionState};
 use crate::physical_plan::streaming::tree::{PipelineNode, Tree};
 use crate::prelude::*;
 
@@ -212,7 +212,7 @@ pub(super) fn construct(
     };
     // keep the original around for formatting purposes
     let original_lp = if fmt {
-        let original_lp = node_to_lp_cloned(insertion_location, expr_arena, lp_arena);
+        let original_lp = IRPlan::new(insertion_location, lp_arena.clone(), expr_arena.clone());
         Some(original_lp)
     } else {
         None
@@ -233,7 +233,7 @@ fn get_pipeline_node(
     lp_arena: &mut Arena<IR>,
     mut pipelines: Vec<PipeLine>,
     schema: SchemaRef,
-    original_lp: Option<DslPlan>,
+    original_lp: Option<IRPlan>,
 ) -> IR {
     // create a dummy input as the map function will call the input
     // so we just create a scan that returns an empty df
@@ -241,8 +241,7 @@ fn get_pipeline_node(
         df: Arc::new(DataFrame::empty()),
         schema: Arc::new(Schema::new()),
         output_schema: None,
-        projection: None,
-        selection: None,
+        filter: None,
     });
 
     IR::MapFunction {

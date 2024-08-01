@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-io"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = false
 autobins = false
@@ -40,7 +40,7 @@ path = "src/lib.rs"
 version = ">=0.8.5"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -59,6 +59,10 @@ optional = true
 
 [dependencies.atoi_simd]
 version = "0.15.5"
+optional = true
+
+[dependencies.blake3]
+version = "1.5.1"
 optional = true
 
 [dependencies.bytes]
@@ -102,7 +106,7 @@ package = "memmap2"
 version = "0.2"
 
 [dependencies.object_store]
-version = "0.9"
+version = "0.10"
 optional = true
 default-features = false
 
@@ -113,31 +117,31 @@ version = "1"
 version = "2.3"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-json]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-parquet]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-time]
-version = "0.40.0"
+version = "0.41.2"
 features = []
 optional = true
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.rayon]
@@ -168,6 +172,7 @@ version = "1"
 features = [
     "alloc",
     "raw_value",
+    "std",
 ]
 optional = true
 default-features = false
@@ -187,6 +192,7 @@ version = "1"
 [dependencies.tokio]
 version = "1.26"
 features = [
+    "fs",
     "net",
     "rt-multi-thread",
     "time",
@@ -243,6 +249,7 @@ cloud = [
     "url",
     "serde_json",
     "serde",
+    "file_cache",
 ]
 csv = [
     "atoi_simd",
@@ -283,6 +290,11 @@ dtype-time = [
 ]
 dtype-u16 = ["polars-core/dtype-u16"]
 dtype-u8 = ["polars-core/dtype-u8"]
+file_cache = [
+    "async",
+    "dep:blake3",
+    "dep:fs4",
+]
 fmt = ["polars-core/fmt"]
 gcp = [
     "object_store/gcp",
@@ -319,6 +331,7 @@ python = ["polars-error/python"]
 serde = [
     "dep:serde",
     "polars-core/serde-lazy",
+    "polars-parquet/serde",
 ]
 simd = []
 temporal = [
@@ -332,5 +345,10 @@ timezones = [
     "arrow/timezones",
 ]
 
-[target."cfg(not(target_family = \"wasm\"))".dependencies.home]
+[target.'cfg(not(target_family = "wasm"))'.dependencies.fs4]
+version = "0.8.3"
+features = ["sync"]
+optional = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies.home]
 version = "0.5.4"

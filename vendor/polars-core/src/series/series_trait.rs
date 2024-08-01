@@ -1,9 +1,12 @@
 use std::any::Any;
 use std::borrow::Cow;
+use std::sync::RwLockReadGuard;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::chunked_array::cast::CastOptions;
+use crate::chunked_array::metadata::MetadataTrait;
 #[cfg(feature = "object")]
 use crate::chunked_array::object::PolarsObjectSafe;
 use crate::prelude::*;
@@ -37,23 +40,23 @@ macro_rules! invalid_operation_panic {
     };
 }
 
+pub enum BitRepr {
+    Small(UInt32Chunked),
+    Large(UInt64Chunked),
+}
+
 pub(crate) mod private {
     use ahash::RandomState;
 
     use super::*;
+    use crate::chunked_array::metadata::MetadataFlags;
     use crate::chunked_array::ops::compare_inner::{TotalEqInner, TotalOrdInner};
-    use crate::chunked_array::Settings;
 
     pub trait PrivateSeriesNumeric {
-        fn bit_repr_is_large(&self) -> bool {
-            false
-        }
-        fn bit_repr_large(&self) -> UInt64Chunked {
-            unimplemented!()
-        }
-        fn bit_repr_small(&self) -> UInt32Chunked {
-            unimplemented!()
-        }
+        /// Return a bit representation
+        ///
+        /// If there is no available bit representation this returns `None`.
+        fn bit_repr(&self) -> Option<BitRepr>;
     }
 
     pub trait PrivateSeries {
@@ -74,9 +77,9 @@ pub(crate) mod private {
 
         fn compute_len(&mut self);
 
-        fn _get_flags(&self) -> Settings;
+        fn _get_flags(&self) -> MetadataFlags;
 
-        fn _set_flags(&mut self, flags: Settings);
+        fn _set_flags(&mut self, flags: MetadataFlags);
 
         fn explode_by_offsets(&self, _offsets: &[i64]) -> Series {
             invalid_operation_panic!(explode_by_offsets, self)
@@ -136,23 +139,23 @@ pub(crate) mod private {
         }
 
         fn subtract(&self, _rhs: &Series) -> PolarsResult<Series> {
-            invalid_operation_panic!(sub, self)
+            polars_bail!(opq = subtract, self._dtype());
         }
         fn add_to(&self, _rhs: &Series) -> PolarsResult<Series> {
-            invalid_operation_panic!(add, self)
+            polars_bail!(opq = add, self._dtype());
         }
         fn multiply(&self, _rhs: &Series) -> PolarsResult<Series> {
-            invalid_operation_panic!(mul, self)
+            polars_bail!(opq = multiply, self._dtype());
         }
         fn divide(&self, _rhs: &Series) -> PolarsResult<Series> {
-            invalid_operation_panic!(div, self)
+            polars_bail!(opq = divide, self._dtype());
         }
         fn remainder(&self, _rhs: &Series) -> PolarsResult<Series> {
-            invalid_operation_panic!(rem, self)
+            polars_bail!(opq = remainder, self._dtype());
         }
         #[cfg(feature = "algorithm_group_by")]
         fn group_tuples(&self, _multithreaded: bool, _sorted: bool) -> PolarsResult<GroupsProxy> {
-            invalid_operation_panic!(group_tuples, self)
+            polars_bail!(opq = group_tuples, self._dtype());
         }
         #[cfg(feature = "zip_with")]
         fn zip_with_same_type(
@@ -160,7 +163,7 @@ pub(crate) mod private {
             _mask: &BooleanChunked,
             _other: &Series,
         ) -> PolarsResult<Series> {
-            invalid_operation_panic!(zip_with_same_type, self)
+            polars_bail!(opq = zip_with_same_type, self._dtype());
         }
 
         #[allow(unused_variables)]
@@ -190,6 +193,10 @@ pub trait SeriesTrait:
 
     fn bitxor(&self, _other: &Series) -> PolarsResult<Series> {
         polars_bail!(opq = bitxor, self._dtype());
+    }
+
+    fn get_metadata(&self) -> Option<RwLockReadGuard<dyn MetadataTrait>> {
+        None
     }
 
     /// Get the lengths of the underlying chunks
@@ -237,6 +244,12 @@ pub trait SeriesTrait:
     /// When offset is negative the offset is counted from the
     /// end of the array
     fn slice(&self, _offset: i64, _length: usize) -> Series;
+
+    /// Get a zero copy view of the data.
+    ///
+    /// When offset is negative the offset is counted from the
+    /// end of the array
+    fn split_at(&self, _offset: i64) -> (Series, Series);
 
     #[doc(hidden)]
     fn append(&mut self, _other: &Series) -> PolarsResult<()>;
@@ -321,7 +334,7 @@ pub trait SeriesTrait:
     /// ```
     fn new_from_index(&self, _index: usize, _length: usize) -> Series;
 
-    fn cast(&self, _data_type: &DataType) -> PolarsResult<Series>;
+    fn cast(&self, _data_type: &DataType, options: CastOptions) -> PolarsResult<Series>;
 
     /// Get a single value by index. Don't use this operation for loops as a runtime cast is
     /// needed for every iteration.
@@ -361,6 +374,8 @@ pub trait SeriesTrait:
     }
 
     /// Get unique values in the Series.
+    ///
+    /// A `null` value also counts as a unique value.
     fn n_unique(&self) -> PolarsResult<usize> {
         polars_bail!(opq = n_unique, self._dtype());
     }

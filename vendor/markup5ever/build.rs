@@ -31,14 +31,14 @@ static NAMESPACES: &[(&str, &str)] = &[
 
 fn main() {
     let generated = Path::new(&env::var("OUT_DIR").unwrap()).join("generated.rs");
-    let mut generated = BufWriter::new(File::create(&generated).unwrap());
+    let mut generated = BufWriter::new(File::create(generated).unwrap());
 
     named_entities_to_phf(&Path::new(&env::var("OUT_DIR").unwrap()).join("named_entities.rs"));
 
     // Create a string cache for local names
     let local_names = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("local_names.txt");
     let mut local_names_atom = string_cache_codegen::AtomType::new("LocalName", "local_name!");
-    for line in BufReader::new(File::open(&local_names).unwrap()).lines() {
+    for line in BufReader::new(File::open(local_names).unwrap()).lines() {
         let local_name = line.unwrap();
         local_names_atom.atom(&local_name);
         local_names_atom.atom(&local_name.to_ascii_lowercase());
@@ -110,7 +110,7 @@ fn named_entities_to_phf(to: &Path) {
         &mut file,
         r#"
 /// A map of entity names to their codepoints. The second codepoint will
-/// be 0 if the entity contains a single codepoint. Entities have their preceeding '&' removed.
+/// be 0 if the entity contains a single codepoint. Entities have their preceding '&' removed.
 ///
 /// # Examples
 ///

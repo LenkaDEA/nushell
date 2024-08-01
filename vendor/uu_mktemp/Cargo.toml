@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "uu_mktemp"
-version = "0.0.26"
+version = "0.0.27"
 authors = ["uutils developers"]
 description = "mktemp ~ (uutils) create and display a temporary file or directory from TEMPLATE"
 homepage = "https://github.com/uutils/coreutils"
@@ -42,7 +42,7 @@ features = [
 ]
 
 [dependencies.rand]
-version = "0.8"
+version = "0.8.5"
 features = ["small_rng"]
 
 [dependencies.tempfile]

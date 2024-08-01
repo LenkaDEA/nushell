@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-time"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = false
 autobins = false
@@ -30,7 +30,7 @@ name = "polars_time"
 path = "src/lib.rs"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -71,7 +71,7 @@ version = "0.1"
 version = "1"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "dtype-datetime",
     "dtype-duration",
@@ -81,15 +81,15 @@ features = [
 default-features = false
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.regex]
@@ -104,7 +104,7 @@ optional = true
 version = "1"
 
 [dev-dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 features = ["abs"]
 default-features = false
 
@@ -127,6 +127,9 @@ dtype-time = [
     "temporal",
 ]
 fmt = ["polars-core/fmt"]
+month_end = []
+month_start = []
+offset_by = []
 rolling_window = ["polars-core/rolling_window"]
 rolling_window_by = [
     "polars-core/rolling_window_by",

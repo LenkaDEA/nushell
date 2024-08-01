@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-pipe"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -30,7 +30,7 @@ name = "polars_pipe"
 path = "src/lib.rs"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -68,11 +68,11 @@ features = [
 version = "0.2"
 
 [dependencies.polars-compute]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "lazy",
     "zip_with",
@@ -82,16 +82,16 @@ features = [
 default-features = false
 
 [dependencies.polars-expr]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-io]
-version = "0.40.0"
+version = "0.41.2"
 features = ["ipc"]
 default-features = false
 
 [dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "search_sorted",
     "chunked_ids",
@@ -99,15 +99,15 @@ features = [
 default-features = false
 
 [dependencies.polars-plan]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-row]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 features = ["sysinfo"]
 default-features = false
 

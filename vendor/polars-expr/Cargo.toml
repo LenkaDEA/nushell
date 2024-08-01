@@ -12,14 +12,14 @@
 [package]
 edition = "2021"
 name = "polars-expr"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = false
 autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "Physical expression implemenation of the Polars project."
+description = "Physical expression implementation of the Polars project."
 homepage = "https://www.pola.rs/"
 readme = "README.md"
 license = "MIT"
@@ -33,7 +33,7 @@ path = "src/lib.rs"
 version = ">=0.8.5"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -53,7 +53,7 @@ version = "2"
 version = "1"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "lazy",
     "zip_with",
@@ -62,31 +62,31 @@ features = [
 default-features = false
 
 [dependencies.polars-io]
-version = "0.40.0"
+version = "0.41.2"
 features = ["lazy"]
 default-features = false
 
 [dependencies.polars-json]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 features = ["chunked_ids"]
 default-features = false
 
 [dependencies.polars-plan]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-time]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.rayon]

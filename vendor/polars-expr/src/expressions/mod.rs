@@ -6,6 +6,7 @@ mod cast;
 mod column;
 mod count;
 mod filter;
+mod gather;
 mod group_iter;
 mod literal;
 #[cfg(feature = "dynamic_group_by")]
@@ -13,7 +14,6 @@ mod rolling;
 mod slice;
 mod sort;
 mod sortby;
-mod take;
 mod ternary;
 mod window;
 
@@ -30,6 +30,7 @@ pub(crate) use cast::*;
 pub(crate) use column::*;
 pub(crate) use count::*;
 pub(crate) use filter::*;
+pub(crate) use gather::*;
 pub(crate) use literal::*;
 use polars_core::prelude::*;
 use polars_io::predicates::PhysicalIoExpr;
@@ -39,8 +40,8 @@ pub(crate) use rolling::RollingExpr;
 pub(crate) use slice::*;
 pub(crate) use sort::*;
 pub(crate) use sortby::*;
-pub(crate) use take::*;
 pub(crate) use ternary::*;
+pub use window::window_function_format_order_by;
 pub(crate) use window::*;
 
 use crate::state::ExecutionState;
@@ -120,7 +121,7 @@ impl<'a> AggregationContext<'a> {
     pub(crate) fn dtype(&self) -> DataType {
         match &self.state {
             AggState::Literal(s) => s.dtype().clone(),
-            AggState::AggregatedList(s) => s.list().unwrap().inner_dtype(),
+            AggState::AggregatedList(s) => s.list().unwrap().inner_dtype().clone(),
             AggState::AggregatedScalar(s) => s.dtype().clone(),
             AggState::NotAggregated(s) => s.dtype().clone(),
         }
@@ -195,7 +196,7 @@ impl<'a> AggregationContext<'a> {
 
     /// # Arguments
     /// - `aggregated` sets if the Series is a list due to aggregation (could also be a list because its
-    /// the columns dtype)
+    ///   the columns dtype)
     fn new(
         series: Series,
         groups: Cow<'a, GroupsProxy>,
@@ -288,8 +289,7 @@ impl<'a> AggregationContext<'a> {
                 });
             },
             _ => {
-                // SAFETY: unstable series never lives longer than the iterator.
-                let groups = unsafe {
+                let groups = {
                     self.series()
                         .list()
                         .expect("impl error, should be a list at this point")
@@ -318,7 +318,7 @@ impl<'a> AggregationContext<'a> {
 
     /// # Arguments
     /// - `aggregated` sets if the Series is a list due to aggregation (could also be a list because its
-    /// the columns dtype)
+    ///   the columns dtype)
     pub(crate) fn with_series(
         &mut self,
         series: Series,
@@ -419,7 +419,7 @@ impl<'a> AggregationContext<'a> {
                 self.groups();
                 let rows = self.groups.len();
                 let s = s.new_from_index(0, rows);
-                s.reshape(&[rows as i64, -1]).unwrap()
+                s.reshape_list(&[rows as i64, -1]).unwrap()
             },
         }
     }

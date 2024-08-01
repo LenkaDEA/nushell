@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-ops"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -42,7 +42,7 @@ features = ["float"]
 default-features = false
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -107,11 +107,11 @@ version = "2.6"
 version = "0.2"
 
 [dependencies.polars-compute]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "algorithm_group_by",
     "zip_with",
@@ -119,16 +119,16 @@ features = [
 default-features = false
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-json]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.rand]
@@ -247,6 +247,7 @@ hist = [
     "dtype-struct",
 ]
 interpolate = []
+interpolate_by = []
 is_between = []
 is_first_distinct = []
 is_in = ["polars-core/reinterpret"]

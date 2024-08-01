@@ -22,20 +22,14 @@ impl TryFrom<(RecordBatch, &[ArrowField])> for DataFrame {
 }
 
 impl DataFrame {
-    pub fn split_chunks(mut self) -> impl Iterator<Item = DataFrame> {
+    pub fn split_chunks(&mut self) -> impl Iterator<Item = DataFrame> + '_ {
         self.align_chunks();
 
         (0..self.n_chunks()).map(move |i| unsafe {
             let columns = self
                 .get_columns()
                 .iter()
-                .map(|s| {
-                    Series::from_chunks_and_dtype_unchecked(
-                        s.name(),
-                        vec![s.chunks()[i].clone()],
-                        s.dtype(),
-                    )
-                })
+                .map(|s| s.select_chunk(i))
                 .collect::<Vec<_>>();
 
             DataFrame::new_no_checks(columns)

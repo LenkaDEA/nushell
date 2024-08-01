@@ -3,14 +3,19 @@ use std::borrow::Cow;
 
 use ahash::RandomState;
 
+use super::{BitRepr, MetadataFlags};
+use crate::chunked_array::cast::CastOptions;
 use crate::chunked_array::object::PolarsObjectSafe;
 use crate::chunked_array::ops::compare_inner::{IntoTotalEqInner, TotalEqInner};
-use crate::chunked_array::Settings;
 use crate::prelude::*;
 use crate::series::implementations::SeriesWrap;
 use crate::series::private::{PrivateSeries, PrivateSeriesNumeric};
 
-impl<T: PolarsObject> PrivateSeriesNumeric for SeriesWrap<ObjectChunked<T>> {}
+impl<T: PolarsObject> PrivateSeriesNumeric for SeriesWrap<ObjectChunked<T>> {
+    fn bit_repr(&self) -> Option<BitRepr> {
+        None
+    }
+}
 
 impl<T> PrivateSeries for SeriesWrap<ObjectChunked<T>>
 where
@@ -37,10 +42,10 @@ where
         self.0.dtype()
     }
 
-    fn _set_flags(&mut self, flags: Settings) {
+    fn _set_flags(&mut self, flags: MetadataFlags) {
         self.0.set_flags(flags)
     }
-    fn _get_flags(&self) -> Settings {
+    fn _get_flags(&self) -> MetadataFlags {
         self.0.get_flags()
     }
     unsafe fn agg_list(&self, groups: &GroupsProxy) -> Series {
@@ -103,6 +108,11 @@ where
         ObjectChunked::slice(&self.0, offset, length).into_series()
     }
 
+    fn split_at(&self, offset: i64) -> (Series, Series) {
+        let (a, b) = ObjectChunked::split_at(&self.0, offset);
+        (a.into_series(), b.into_series())
+    }
+
     fn append(&mut self, other: &Series) -> PolarsResult<()> {
         if self.dtype() != other.dtype() {
             polars_bail!(append);
@@ -148,7 +158,7 @@ where
         ChunkExpandAtIndex::new_from_index(&self.0, index, length).into_series()
     }
 
-    fn cast(&self, data_type: &DataType) -> PolarsResult<Series> {
+    fn cast(&self, data_type: &DataType, _cast_options: CastOptions) -> PolarsResult<Series> {
         if matches!(data_type, DataType::Object(_, None)) {
             Ok(self.0.clone().into_series())
         } else {

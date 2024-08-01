@@ -53,10 +53,9 @@ impl PhysicalExpr for FilterExpr {
             let ca = s.list()?;
             let out = if ca.is_empty() {
                 // return an empty list if ca is empty.
-                ListChunked::full_null_with_dtype(ca.name(), 0, &ca.inner_dtype())
+                ListChunked::full_null_with_dtype(ca.name(), 0, ca.inner_dtype())
             } else {
-                // SAFETY: unstable series never lives longer than the iterator.
-                unsafe {
+                {
                     ca.amortized_iter()
                         .zip(preds)
                         .map(|(opt_s, opt_pred)| match (opt_s, opt_pred) {

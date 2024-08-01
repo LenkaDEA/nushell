@@ -1,5 +1,117 @@
 # Changelog
 
+## 5.3.0 (2024-07-10)
+
+### New Features
+
+ - <csr-id-58142a695d50460e439f85be3f0bc010936520e6/> add GNU/Hurd support
+   Handle it like most of the other Unix platforms (e.g. Linux, BSDs, etc).
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 2 commits contributed to the release.
+ - 7 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Merge pull request #101 from pinotree/hurd ([`a060608`](https://github.com/Byron/open-rs/commit/a0606084dd4a18ca67bef84fa217529cb858ded5))
+    - Add GNU/Hurd support ([`58142a6`](https://github.com/Byron/open-rs/commit/58142a695d50460e439f85be3f0bc010936520e6))
+</details>
+
+## 5.2.0 (2024-07-02)
+
+### New Features
+
+ - <csr-id-d4e66dc1332e49672190060de6b39b13784c5de9/> Add AIX support
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 3 commits contributed to the release.
+ - 27 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Release open v5.2.0 ([`3cf72fd`](https://github.com/Byron/open-rs/commit/3cf72fd426442ed856f1b9cddea61b5413299c45))
+    - Add AIX support ([`d4e66dc`](https://github.com/Byron/open-rs/commit/d4e66dc1332e49672190060de6b39b13784c5de9))
+    - Add AIX support ([`b414215`](https://github.com/Byron/open-rs/commit/b41421579aa68b484d57814acd2ef33e5b1b9b5a))
+</details>
+
+## 5.1.4 (2024-06-04)
+
+This release adds vision-os support, by means of `ios` simulation.
+See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 4 commits contributed to the release over the course of 5 calendar days.
+ - 19 days passed between releases.
+ - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Release open v5.1.4 ([`644f186`](https://github.com/Byron/open-rs/commit/644f186e6b4e870ca91c1eceeebe8fe9760eca35))
+    - Prepare changelog prior to release ([`5967b66`](https://github.com/Byron/open-rs/commit/5967b66212097facead9f16bc56905992eb6650e))
+    - Merge pull request #99 from eugenehp/visionos ([`1efa4cb`](https://github.com/Byron/open-rs/commit/1efa4cbb8ed7c1abac95299dd6af3c17727b27af))
+    - Added visionos support ([`df28e8b`](https://github.com/Byron/open-rs/commit/df28e8bdce30cd1a8e930c947566edfd8835cef8))
+</details>
+
+## 5.1.3 (2024-05-16)
+
+### Bug Fixes
+
+ - <csr-id-43d8d88a2d5949114cdebcc08a0aad68f2141e54/> use `ShellExecuteExW` to avoid freeze when opening directories
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 6 commits contributed to the release over the course of 68 calendar days.
+ - 70 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#94](https://github.com/Byron/open-rs/issues/94)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#94](https://github.com/Byron/open-rs/issues/94)**
+    - Clarify docs of `shellexecute-on-windows` feature ([`7652a30`](https://github.com/Byron/open-rs/commit/7652a3016e3b243604f38d40eab6097c2d816fde))
+ * **Uncategorized**
+    - Release open v5.1.3 ([`6e396da`](https://github.com/Byron/open-rs/commit/6e396da65e3483866a75a405b67f495d43cceb06))
+    - Merge pull request #98 from amrbashir/fix/windows/shell-execute-freeze ([`d152c8e`](https://github.com/Byron/open-rs/commit/d152c8e09225b23195dbee243e8bd508e07686e3))
+    - Use cfg_attr ([`c8840af`](https://github.com/Byron/open-rs/commit/c8840afb1550cef2c9897130c7d05b72bfd55d4a))
+    - Update src/windows.rs ([`75c7ea0`](https://github.com/Byron/open-rs/commit/75c7ea085116502d4dae61bc752cb27e7663a914))
+    - Use `ShellExecuteExW` to avoid freeze when opening directories ([`43d8d88`](https://github.com/Byron/open-rs/commit/43d8d88a2d5949114cdebcc08a0aad68f2141e54))
+</details>
+
 ## 5.1.2 (2024-03-07)
 
 ### Bug Fixes
@@ -10,7 +122,7 @@
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 4 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
@@ -22,6 +134,7 @@
 <details><summary>view details</summary>
 
  * **Uncategorized**
+    - Release open v5.1.2 ([`a65b733`](https://github.com/Byron/open-rs/commit/a65b7332e998ce0d61be8bf6786d0911b3334539))
     - Merge branch 'fix/shell-execute-w-link' ([`50b7a96`](https://github.com/Byron/open-rs/commit/50b7a96a964987fc4a82f6633930384c6d8e5fb0))
     - Link using "system" ABI ([`2a62e84`](https://github.com/Byron/open-rs/commit/2a62e84a234274b53cb77ffcef4ad76630ba7c2f))
 </details>

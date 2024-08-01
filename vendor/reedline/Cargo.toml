@@ -11,13 +11,10 @@
 
 [package]
 edition = "2021"
-rust-version = "1.62.1"
+rust-version = "1.63.0"
 name = "reedline"
-version = "0.32.0"
-authors = [
-    "JT <jonathan.d.turner@gmail.com>",
-    "The Nushell Project Developers",
-]
+version = "0.33.0"
+authors = ["The Nushell Project Developers"]
 description = "A readline-like crate for CLI text input"
 readme = "README.md"
 license = "MIT"

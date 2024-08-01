@@ -7,15 +7,28 @@ use super::*;
 /// Returns a [`PolarsError::ComputeError`] if no such data type exists.
 pub fn try_get_supertype(l: &DataType, r: &DataType) -> PolarsResult<DataType> {
     get_supertype(l, r).ok_or_else(
-        || polars_err!(ComputeError: "failed to determine supertype of {} and {}", l, r),
+        || polars_err!(SchemaMismatch: "failed to determine supertype of {} and {}", l, r),
     )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Default)]
+pub struct SuperTypeOptions {
+    pub implode_list: bool,
+}
+
+pub fn get_supertype(l: &DataType, r: &DataType) -> Option<DataType> {
+    get_supertype_with_options(l, r, SuperTypeOptions::default())
 }
 
 /// Given two data types, determine the data type that both types can safely be cast to.
 ///
 /// Returns [`None`] if no such data type exists.
-pub fn get_supertype(l: &DataType, r: &DataType) -> Option<DataType> {
-    fn inner(l: &DataType, r: &DataType) -> Option<DataType> {
+pub fn get_supertype_with_options(
+    l: &DataType,
+    r: &DataType,
+    options: SuperTypeOptions,
+) -> Option<DataType> {
+    fn inner(l: &DataType, r: &DataType, options: SuperTypeOptions) -> Option<DataType> {
         use DataType::*;
         if l == r {
             return Some(l.clone());
@@ -233,27 +246,26 @@ pub fn get_supertype(l: &DataType, r: &DataType) -> Option<DataType> {
             }
             (List(inner_left), List(inner_right)) => {
                 let st = get_supertype(inner_left, inner_right)?;
-                Some(DataType::List(Box::new(st)))
+                Some(List(Box::new(st)))
             }
             #[cfg(feature = "dtype-array")]
             (List(inner_left), Array(inner_right, _)) | (Array(inner_left, _), List(inner_right)) => {
                 let st = get_supertype(inner_left, inner_right)?;
-                Some(DataType::List(Box::new(st)))
-            }
-            // todo! check if can be removed
-            (List(inner), other) | (other, List(inner)) => {
-                let st = get_supertype(inner, other)?;
-                Some(DataType::List(Box::new(st)))
+                Some(List(Box::new(st)))
             }
             #[cfg(feature = "dtype-array")]
             (Array(inner_left, width_left), Array(inner_right, width_right)) if *width_left == *width_right => {
                 let st = get_supertype(inner_left, inner_right)?;
-                Some(DataType::Array(Box::new(st), *width_left))
+                Some(Array(Box::new(st), *width_left))
+            }
+            (List(inner), other) | (other, List(inner)) if options.implode_list => {
+                let st = get_supertype(inner, other)?;
+                Some(List(Box::new(st)))
             }
             #[cfg(feature = "dtype-array")]
             (Array(inner_left, _), Array(inner_right, _)) => {
                 let st = get_supertype(inner_left, inner_right)?;
-                Some(DataType::List(Box::new(st)))
+                Some(List(Box::new(st)))
             }
             #[cfg(feature = "dtype-struct")]
             (Struct(inner), right @ Unknown(UnknownKind::Float | UnknownKind::Int(_))) => {
@@ -288,7 +300,7 @@ pub fn get_supertype(l: &DataType, r: &DataType) -> Option<DataType> {
                         }
                         // dyn int vs number
                         else {
-                            let smallest_fitting_dtype = if dt.is_unsigned_integer() && v.is_positive() {
+                            let smallest_fitting_dtype = if dt.is_unsigned_integer() && !v.is_negative() {
                                 materialize_dyn_int_pos(*v).dtype()
                             } else {
                                 materialize_smallest_dyn_int(*v).dtype()
@@ -333,7 +345,7 @@ pub fn get_supertype(l: &DataType, r: &DataType) -> Option<DataType> {
         }
     }
 
-    inner(l, r).or_else(|| inner(r, l))
+    inner(l, r, options).or_else(|| inner(r, l, options))
 }
 
 /// Given multiple data types, determine the data type that all types can safely be cast to.

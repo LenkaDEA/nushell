@@ -51,8 +51,6 @@ impl FunctionExpr {
             SearchSorted(_) => mapper.with_dtype(IDX_DTYPE),
             #[cfg(feature = "range")]
             Range(func) => func.get_field(mapper),
-            #[cfg(feature = "date_offset")]
-            DateOffset { .. } => mapper.with_same_dtype(),
             #[cfg(feature = "trigonometry")]
             Trigonometry(_) => mapper.map_to_float_dtype(),
             #[cfg(feature = "trigonometry")]
@@ -105,10 +103,20 @@ impl FunctionExpr {
             #[cfg(feature = "top_k")]
             TopKBy { .. } => mapper.with_same_dtype(),
             #[cfg(feature = "dtype-struct")]
-            ValueCounts { .. } => mapper.map_dtype(|dt| {
+            ValueCounts {
+                sort: _,
+                parallel: _,
+                name,
+                normalize,
+            } => mapper.map_dtype(|dt| {
+                let count_dt = if *normalize {
+                    DataType::Float64
+                } else {
+                    IDX_DTYPE
+                };
                 DataType::Struct(vec![
                     Field::new(fields[0].name().as_str(), dt.clone()),
-                    Field::new("count", IDX_DTYPE),
+                    Field::new(name, count_dt),
                 ])
             }),
             #[cfg(feature = "unique_counts")]
@@ -135,7 +143,7 @@ impl FunctionExpr {
                 if *include_breakpoint || *include_category {
                     let mut fields = Vec::with_capacity(3);
                     if *include_breakpoint {
-                        fields.push(Field::new("break_point", DataType::Float64));
+                        fields.push(Field::new("breakpoint", DataType::Float64));
                     }
                     if *include_category {
                         fields.push(Field::new(
@@ -172,6 +180,8 @@ impl FunctionExpr {
                 InterpolationMethod::Linear => mapper.map_numeric_to_float_dtype(),
                 InterpolationMethod::Nearest => mapper.with_same_dtype(),
             },
+            #[cfg(feature = "interpolate_by")]
+            InterpolateBy => mapper.map_numeric_to_float_dtype(),
             ShrinkType => {
                 // we return the smallest type this can return
                 // this might not be correct once the actual data
@@ -220,25 +230,32 @@ impl FunctionExpr {
                 include_breaks: true,
                 ..
             } => {
-                let name = fields[0].name();
-                let name_bin = format!("{}_bin", name);
                 let struct_dt = DataType::Struct(vec![
-                    Field::new("brk", DataType::Float64),
-                    Field::new(
-                        name_bin.as_str(),
-                        DataType::Categorical(None, Default::default()),
-                    ),
+                    Field::new("breakpoint", DataType::Float64),
+                    Field::new("category", DataType::Categorical(None, Default::default())),
                 ]);
                 mapper.with_dtype(struct_dt)
             },
             #[cfg(feature = "repeat_by")]
             RepeatBy => mapper.map_dtype(|dt| DataType::List(dt.clone().into())),
-            Reshape(dims) => mapper.map_dtype(|dt| {
+            Reshape(dims, nested_type) => mapper.map_dtype(|dt| {
                 let dtype = dt.inner_dtype().unwrap_or(dt).clone();
                 if dims.len() == 1 {
                     dtype
                 } else {
-                    DataType::List(Box::new(dtype))
+                    match nested_type {
+                        NestedType::List => DataType::List(Box::new(dtype)),
+                        #[cfg(feature = "dtype-array")]
+                        NestedType::Array => {
+                            let mut prev_dtype = dtype.leaf_dtype().clone();
+
+                            // We pop the outer dimension as that is the height of the series.
+                            for dim in &dims[1..] {
+                                prev_dtype = DataType::Array(Box::new(prev_dtype), *dim as usize);
+                            }
+                            prev_dtype
+                        },
+                    }
                 }
             }),
             #[cfg(feature = "cutqcut")]
@@ -251,26 +268,21 @@ impl FunctionExpr {
                 include_breaks: true,
                 ..
             } => {
-                let name = fields[0].name();
-                let name_bin = format!("{}_bin", name);
                 let struct_dt = DataType::Struct(vec![
-                    Field::new("brk", DataType::Float64),
-                    Field::new(
-                        name_bin.as_str(),
-                        DataType::Categorical(None, Default::default()),
-                    ),
+                    Field::new("breakpoint", DataType::Float64),
+                    Field::new("category", DataType::Categorical(None, Default::default())),
                 ]);
                 mapper.with_dtype(struct_dt)
             },
             #[cfg(feature = "rle")]
             RLE => mapper.map_dtype(|dt| {
                 DataType::Struct(vec![
-                    Field::new("lengths", DataType::Int32),
-                    Field::new("values", dt.clone()),
+                    Field::new("len", IDX_DTYPE),
+                    Field::new("value", dt.clone()),
                 ])
             }),
             #[cfg(feature = "rle")]
-            RLEID => mapper.with_dtype(DataType::UInt32),
+            RLEID => mapper.with_dtype(IDX_DTYPE),
             ToPhysical => mapper.to_physical_type(),
             #[cfg(feature = "random")]
             Random { .. } => mapper.with_same_dtype(),
@@ -302,7 +314,9 @@ impl FunctionExpr {
             #[cfg(feature = "ewma")]
             EwmVar { .. } => mapper.map_to_float_dtype(),
             #[cfg(feature = "replace")]
-            Replace { return_dtype } => mapper.replace_dtype(return_dtype.clone()),
+            Replace => mapper.with_same_dtype(),
+            #[cfg(feature = "replace")]
+            ReplaceStrict { return_dtype } => mapper.replace_dtype(return_dtype.clone()),
             FillNullWithStrategy(_) => mapper.with_same_dtype(),
             GatherEvery { .. } => mapper.with_same_dtype(),
             #[cfg(feature = "reinterpret")]
@@ -318,10 +332,12 @@ impl FunctionExpr {
         }
     }
 
-    pub(crate) fn output_name(&self) -> Option<&ColumnName> {
+    pub(crate) fn output_name(&self) -> Option<OutputName> {
         match self {
             #[cfg(feature = "dtype-struct")]
-            FunctionExpr::StructExpr(StructFunction::FieldByName(name)) => Some(name),
+            FunctionExpr::StructExpr(StructFunction::FieldByName(name)) => {
+                Some(OutputName::Field(name.clone()))
+            },
             _ => None,
         }
     }
@@ -489,7 +505,7 @@ impl<'a> FieldsMapper<'a> {
         match dt {
             Boolean => first.coerce(IDX_DTYPE),
             UInt8 | Int8 | Int16 | UInt16 => first.coerce(Int64),
-            _ => {},
+            _ => first.coerce(dt),
         }
         Ok(first)
     }
@@ -518,11 +534,13 @@ impl<'a> FieldsMapper<'a> {
     pub fn replace_dtype(&self, return_dtype: Option<DataType>) -> PolarsResult<Field> {
         let dtype = match return_dtype {
             Some(dtype) => dtype,
-            // Supertype of `new` and `default`
             None => {
-                let column_type = &self.fields[0];
                 let new = &self.fields[2];
-                try_get_supertype(column_type.data_type(), new.data_type())?
+                let default = self.fields.get(3);
+                match default {
+                    Some(default) => try_get_supertype(default.data_type(), new.data_type())?,
+                    None => new.data_type().clone(),
+                }
             },
         };
         self.with_dtype(dtype)

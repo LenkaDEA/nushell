@@ -11,21 +11,36 @@ use crate::series::ops::SeriesSealed;
 pub trait SeriesMethods: SeriesSealed {
     /// Create a [`DataFrame`] with the unique `values` of this [`Series`] and a column `"counts"`
     /// with dtype [`IdxType`]
-    fn value_counts(&self, sort: bool, parallel: bool) -> PolarsResult<DataFrame> {
+    fn value_counts(
+        &self,
+        sort: bool,
+        parallel: bool,
+        name: String,
+        normalize: bool,
+    ) -> PolarsResult<DataFrame> {
         let s = self.as_series();
         polars_ensure!(
-            s.name() != "count",
-            Duplicate: "using `value_counts` on a column named 'count' would lead to duplicate column names"
+            s.name() != name,
+            Duplicate: "using `value_counts` on a column/series named '{}' would lead to duplicate column names; change `name` to fix", name,
         );
         // we need to sort here as well in case of `maintain_order` because duplicates behavior is undefined
         let groups = s.group_tuples(parallel, sort)?;
         let values = unsafe { s.agg_first(&groups) };
-        let counts = groups.group_count().with_name("count");
+        let counts = groups.group_count().with_name(name.as_str());
+
+        let counts = if normalize {
+            let len = s.len() as f64;
+            let counts: Float64Chunked = counts.apply_values_generic(|count| count as f64 / len);
+            counts.into_series()
+        } else {
+            counts.into_series()
+        };
+
         let cols = vec![values, counts.into_series()];
         let df = unsafe { DataFrame::new_no_checks(cols) };
         if sort {
             df.sort(
-                ["count"],
+                [name],
                 SortMultipleOptions::default()
                     .with_order_descending(true)
                     .with_multithreaded(parallel),
@@ -51,6 +66,11 @@ pub trait SeriesMethods: SeriesSealed {
         }
     }
 
+    fn ensure_sorted_arg(&self, operation: &str) -> PolarsResult<()> {
+        polars_ensure!(self.is_sorted(Default::default())?, InvalidOperation: "argument in operation '{}' is not sorted, please sort the 'expr/series/column' first", operation);
+        Ok(())
+    }
+
     /// Checks if a [`Series`] is sorted. Tries to fail fast.
     fn is_sorted(&self, options: SortOptions) -> PolarsResult<bool> {
         let s = self.as_series();
@@ -70,8 +90,12 @@ pub trait SeriesMethods: SeriesSealed {
         // for struct types we row-encode and recurse
         #[cfg(feature = "dtype-struct")]
         if matches!(s.dtype(), DataType::Struct(_)) {
-            let encoded =
-                _get_rows_encoded_ca("", &[s.clone()], &[options.descending], options.nulls_last)?;
+            let encoded = _get_rows_encoded_ca(
+                "",
+                &[s.clone()],
+                &[options.descending],
+                &[options.nulls_last],
+            )?;
             return encoded.into_series().is_sorted(options);
         }
 

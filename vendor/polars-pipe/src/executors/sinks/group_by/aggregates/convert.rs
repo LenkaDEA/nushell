@@ -8,8 +8,8 @@ use polars_core::schema::Schema;
 use polars_expr::state::ExecutionState;
 use polars_io::predicates::PhysicalIoExpr;
 use polars_plan::dsl::Expr;
-use polars_plan::logical_plan::expr_ir::ExprIR;
-use polars_plan::logical_plan::{ArenaExprIter, Context};
+use polars_plan::plans::expr_ir::ExprIR;
+use polars_plan::plans::{ArenaExprIter, Context};
 use polars_plan::prelude::{AExpr, IRAggExpr};
 use polars_utils::arena::{Arena, Node};
 use polars_utils::IdxSize;
@@ -101,7 +101,12 @@ pub fn can_convert_to_hash_agg(
                     }
                 ) && {
                     if let Ok(field) = ae.to_field(input_schema, Context::Default, expr_arena) {
-                        field.dtype.to_physical().is_numeric()
+                        match field.dtype {
+                            DataType::Date => {
+                                matches!(agg_fn, IRAggExpr::Mean(_) | IRAggExpr::Median(_))
+                            },
+                            _ => field.dtype.to_physical().is_numeric(),
+                        }
                     } else {
                         false
                     }
@@ -241,7 +246,7 @@ where
                 #[cfg(feature = "dtype-categorical")]
                 if matches!(
                     logical_dtype,
-                    DataType::Categorical(_, _) | DataType::Enum(_, _)
+                    DataType::Categorical(_, _) | DataType::Enum(_, _) | DataType::Date
                 ) {
                     return (
                         logical_dtype.clone(),

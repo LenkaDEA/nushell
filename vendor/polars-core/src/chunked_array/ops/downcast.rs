@@ -69,7 +69,7 @@ impl<T: PolarsDataType> ChunkedArray<T> {
 
     #[inline]
     pub fn downcast_slices(&self) -> Option<impl DoubleEndedIterator<Item = &[T::Physical<'_>]>> {
-        if self.null_count != 0 {
+        if self.null_count() != 0 {
             return None;
         }
         let arr = self.downcast_iter().next().unwrap();
@@ -104,6 +104,12 @@ impl<T: PolarsDataType> ChunkedArray<T> {
         // SAFETY: T::Array guarantees this is correct.
         let arr = &**arr;
         unsafe { Some(&*(arr as *const dyn Array as *const T::Array)) }
+    }
+
+    #[inline]
+    pub fn downcast_into_array(self) -> T::Array {
+        assert_eq!(self.chunks.len(), 1);
+        self.downcast_get(0).unwrap().clone()
     }
 
     #[inline]

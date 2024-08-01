@@ -10,11 +10,8 @@ unsafe impl IntoSeries for DatetimeChunked {
 }
 
 impl private::PrivateSeriesNumeric for SeriesWrap<DatetimeChunked> {
-    fn bit_repr_is_large(&self) -> bool {
-        true
-    }
-    fn bit_repr_large(&self) -> UInt64Chunked {
-        self.0.bit_repr_large()
+    fn bit_repr(&self) -> Option<BitRepr> {
+        Some(self.0.to_bit_repr())
     }
 }
 
@@ -28,10 +25,10 @@ impl private::PrivateSeries for SeriesWrap<DatetimeChunked> {
     fn _dtype(&self) -> &DataType {
         self.0.dtype()
     }
-    fn _get_flags(&self) -> Settings {
+    fn _get_flags(&self) -> MetadataFlags {
         self.0.get_flags()
     }
-    fn _set_flags(&mut self, flags: Settings) {
+    fn _set_flags(&mut self, flags: MetadataFlags) {
         self.0.set_flags(flags)
     }
 
@@ -90,13 +87,13 @@ impl private::PrivateSeries for SeriesWrap<DatetimeChunked> {
             (DataType::Datetime(tu, tz), DataType::Datetime(tur, tzr)) => {
                 assert_eq!(tu, tur);
                 assert_eq!(tz, tzr);
-                let lhs = self.cast(&DataType::Int64).unwrap();
+                let lhs = self.cast(&DataType::Int64, CastOptions::NonStrict).unwrap();
                 let rhs = rhs.cast(&DataType::Int64).unwrap();
                 Ok(lhs.subtract(&rhs)?.into_duration(*tu).into_series())
             },
             (DataType::Datetime(tu, tz), DataType::Duration(tur)) => {
                 assert_eq!(tu, tur);
-                let lhs = self.cast(&DataType::Int64).unwrap();
+                let lhs = self.cast(&DataType::Int64, CastOptions::NonStrict).unwrap();
                 let rhs = rhs.cast(&DataType::Int64).unwrap();
                 Ok(lhs
                     .subtract(&rhs)?
@@ -110,7 +107,7 @@ impl private::PrivateSeries for SeriesWrap<DatetimeChunked> {
         match (self.dtype(), rhs.dtype()) {
             (DataType::Datetime(tu, tz), DataType::Duration(tur)) => {
                 assert_eq!(tu, tur);
-                let lhs = self.cast(&DataType::Int64).unwrap();
+                let lhs = self.cast(&DataType::Int64, CastOptions::NonStrict).unwrap();
                 let rhs = rhs.cast(&DataType::Int64).unwrap();
                 Ok(lhs
                     .add_to(&rhs)?
@@ -171,6 +168,15 @@ impl SeriesTrait for SeriesWrap<DatetimeChunked> {
             .slice(offset, length)
             .into_datetime(self.0.time_unit(), self.0.time_zone().clone())
             .into_series()
+    }
+    fn split_at(&self, offset: i64) -> (Series, Series) {
+        let (a, b) = self.0.split_at(offset);
+        (
+            a.into_datetime(self.0.time_unit(), self.0.time_zone().clone())
+                .into_series(),
+            b.into_datetime(self.0.time_unit(), self.0.time_zone().clone())
+                .into_series(),
+        )
     }
 
     fn mean(&self) -> Option<f64> {
@@ -246,7 +252,7 @@ impl SeriesTrait for SeriesWrap<DatetimeChunked> {
             .into_series()
     }
 
-    fn cast(&self, data_type: &DataType) -> PolarsResult<Series> {
+    fn cast(&self, data_type: &DataType, cast_options: CastOptions) -> PolarsResult<Series> {
         match (data_type, self.0.time_unit()) {
             (DataType::String, TimeUnit::Milliseconds) => {
                 Ok(self.0.to_string("%F %T%.3f")?.into_series())
@@ -257,7 +263,7 @@ impl SeriesTrait for SeriesWrap<DatetimeChunked> {
             (DataType::String, TimeUnit::Nanoseconds) => {
                 Ok(self.0.to_string("%F %T%.9f")?.into_series())
             },
-            _ => self.0.cast(data_type),
+            _ => self.0.cast_with_options(data_type, cast_options),
         }
     }
 

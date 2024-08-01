@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
 
+use polars_core::chunked_array::cast::CastOptions;
 use polars_core::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -81,7 +82,7 @@ pub enum Expr {
     Cast {
         expr: Arc<Expr>,
         data_type: DataType,
-        strict: bool,
+        options: CastOptions,
     },
     Sort {
         expr: Arc<Expr>,
@@ -117,11 +118,12 @@ pub enum Expr {
         input: Arc<Expr>,
         by: Arc<Expr>,
     },
-    /// See postgres window functions
+    /// Polars flavored window functions.
     Window {
         /// Also has the input. i.e. avg("foo")
         function: Arc<Expr>,
         partition_by: Vec<Expr>,
+        order_by: Option<(Arc<Expr>, SortOptions)>,
         options: WindowType,
     },
     Wildcard,
@@ -144,6 +146,8 @@ pub enum Expr {
         function: SpecialEq<Arc<dyn RenameAliasFn>>,
         expr: Arc<Expr>,
     },
+    #[cfg(feature = "dtype-struct")]
+    Field(Arc<[ColumnName]>),
     AnonymousFunction {
         /// function arguments
         input: Vec<Expr>,
@@ -189,7 +193,7 @@ impl Hash for Expr {
             Expr::Cast {
                 expr,
                 data_type,
-                strict,
+                options: strict,
             } => {
                 expr.hash(state);
                 data_type.hash(state);
@@ -247,10 +251,12 @@ impl Hash for Expr {
             Expr::Window {
                 function,
                 partition_by,
+                order_by,
                 options,
             } => {
                 function.hash(state);
                 partition_by.hash(state);
+                order_by.hash(state);
                 options.hash(state);
             },
             Expr::Slice {
@@ -277,6 +283,8 @@ impl Hash for Expr {
                 options.hash(state);
             },
             Expr::SubPlan(_, names) => names.hash(state),
+            #[cfg(feature = "dtype-struct")]
+            Expr::Field(names) => names.hash(state),
         }
     }
 }
@@ -300,7 +308,7 @@ pub enum Excluded {
 impl Expr {
     /// Get Field result of the expression. The schema is the input data.
     pub fn to_field(&self, schema: &Schema, ctxt: Context) -> PolarsResult<Field> {
-        // this is not called much and th expression depth is typically shallow
+        // this is not called much and the expression depth is typically shallow
         let mut arena = Arena::with_capacity(5);
         self.to_field_amortized(schema, ctxt, &mut arena)
     }

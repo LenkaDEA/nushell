@@ -29,7 +29,13 @@ pub struct JoinArgs {
     pub coalesce: JoinCoalesce,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash, Default)]
+impl JoinArgs {
+    pub fn should_coalesce(&self) -> bool {
+        self.coalesce.coalesce(&self.how)
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum JoinCoalesce {
     #[default]
@@ -46,11 +52,11 @@ impl JoinCoalesce {
             Left | Inner => {
                 matches!(self, JoinSpecific | CoalesceColumns)
             },
-            Outer { .. } => {
+            Full { .. } => {
                 matches!(self, CoalesceColumns)
             },
             #[cfg(feature = "asof_join")]
-            AsOf(_) => false,
+            AsOf(_) => matches!(self, JoinSpecific | CoalesceColumns),
             Cross => false,
             #[cfg(feature = "semi_anti_join")]
             Semi | Anti => false,
@@ -88,6 +94,11 @@ impl JoinArgs {
         self
     }
 
+    pub fn with_suffix(mut self, suffix: Option<String>) -> Self {
+        self.suffix = suffix;
+        self
+    }
+
     pub fn suffix(&self) -> &str {
         self.suffix.as_deref().unwrap_or("_right")
     }
@@ -96,9 +107,9 @@ impl JoinArgs {
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum JoinType {
-    Left,
     Inner,
-    Outer,
+    Left,
+    Full,
     #[cfg(feature = "asof_join")]
     AsOf(AsOfOptions),
     Cross,
@@ -120,7 +131,7 @@ impl Display for JoinType {
         let val = match self {
             Left => "LEFT",
             Inner => "INNER",
-            Outer { .. } => "OUTER",
+            Full { .. } => "FULL",
             #[cfg(feature = "asof_join")]
             AsOf(_) => "ASOF",
             Cross => "CROSS",
@@ -189,7 +200,7 @@ impl JoinValidation {
         if !self.needs_checks() {
             return Ok(());
         }
-        polars_ensure!(matches!(join_type, JoinType::Inner | JoinType::Outer{..} | JoinType::Left),
+        polars_ensure!(matches!(join_type, JoinType::Inner | JoinType::Full{..} | JoinType::Left),
                       ComputeError: "{self} validation on a {join_type} join is not supported");
         Ok(())
     }

@@ -11,7 +11,6 @@
 
 extern crate html5ever;
 
-use std::default::Default;
 use std::io;
 
 use html5ever::tendril::*;
@@ -33,7 +32,7 @@ impl TokenSink for Sink {
 fn main() {
     let mut chunk = ByteTendril::new();
     io::stdin().read_to_tendril(&mut chunk).unwrap();
-    let mut input = BufferQueue::new();
+    let mut input = BufferQueue::default();
     input.push_back(chunk.try_reinterpret().unwrap());
 
     let mut tok = Tokenizer::new(Sink(Vec::new()), Default::default());

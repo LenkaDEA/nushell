@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-plan"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -44,7 +44,9 @@ features = [
     "is_last_distinct",
     "dtype-time",
     "array_any_all",
-    "date_offset",
+    "month_start",
+    "month_end",
+    "offset_by",
     "parquet",
     "strings",
     "row_hash",
@@ -99,6 +101,7 @@ features = [
     "peaks",
     "abs",
     "interpolate",
+    "interpolate_by",
     "list_count",
     "cum_agg",
     "top_k",
@@ -136,7 +139,7 @@ doctest = false
 version = ">=0.8.5"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -196,7 +199,7 @@ version = "1"
 version = "2.3"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "lazy",
     "zip_with",
@@ -205,37 +208,40 @@ features = [
 default-features = false
 
 [dependencies.polars-ffi]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-io]
-version = "0.40.0"
-features = ["lazy"]
+version = "0.41.2"
+features = [
+    "lazy",
+    "csv",
+]
 default-features = false
 
 [dependencies.polars-json]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 features = []
 default-features = false
 
 [dependencies.polars-parquet]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-time]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.pyo3]
@@ -306,10 +312,6 @@ cse = []
 csv = ["polars-io/csv"]
 cum_agg = ["polars-ops/cum_agg"]
 cutqcut = ["polars-ops/cutqcut"]
-date_offset = [
-    "polars-time",
-    "chrono",
-]
 debugging = []
 diff = ["polars-ops/diff"]
 dot_diagram = []
@@ -361,6 +363,7 @@ future = []
 hist = ["polars-ops/hist"]
 hive_partitions = []
 interpolate = ["polars-ops/interpolate"]
+interpolate_by = ["polars-ops/interpolate_by"]
 ipc = ["polars-io/ipc"]
 is_between = ["polars-ops/is_between"]
 is_first_distinct = [
@@ -389,11 +392,14 @@ merge_sorted = ["polars-ops/merge_sorted"]
 meta = []
 mode = ["polars-ops/mode"]
 moment = ["polars-ops/moment"]
+month_end = ["polars-time/month_end"]
+month_start = ["polars-time/month_start"]
 nightly = [
     "polars-utils/nightly",
     "polars-ops/nightly",
 ]
 object = ["polars-core/object"]
+offset_by = ["polars-time/offset_by"]
 panic_on_schema = []
 parquet = [
     "polars-io/parquet",

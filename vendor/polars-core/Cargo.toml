@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-core"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -40,7 +40,7 @@ path = "src/lib.rs"
 version = ">=0.8.5"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -110,19 +110,19 @@ version = "0.2"
 version = "1"
 
 [dependencies.polars-compute]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-row]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.rand]

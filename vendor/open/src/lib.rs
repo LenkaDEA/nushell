@@ -75,6 +75,9 @@ use macos as os;
 #[cfg(target_os = "ios")]
 use ios as os;
 
+#[cfg(target_os = "visionos")]
+use ios as os;
+
 #[cfg(target_os = "haiku")]
 use haiku as os;
 
@@ -89,7 +92,9 @@ use redox as os;
     target_os = "netbsd",
     target_os = "openbsd",
     target_os = "illumos",
-    target_os = "solaris"
+    target_os = "solaris",
+    target_os = "aix",
+    target_os = "hurd"
 ))]
 use unix as os;
 
@@ -103,10 +108,13 @@ use unix as os;
     target_os = "illumos",
     target_os = "solaris",
     target_os = "ios",
+    target_os = "visionos",
     target_os = "macos",
     target_os = "windows",
     target_os = "haiku",
-    target_os = "redox"
+    target_os = "redox",
+    target_os = "aix",
+    target_os = "hurd"
 )))]
 compile_error!("open is not supported on this platform");
 
@@ -352,6 +360,9 @@ mod macos;
 #[cfg(target_os = "ios")]
 mod ios;
 
+#[cfg(target_os = "visionos")]
+mod ios;
+
 #[cfg(target_os = "haiku")]
 mod haiku;
 
@@ -366,6 +377,8 @@ mod redox;
     target_os = "netbsd",
     target_os = "openbsd",
     target_os = "illumos",
-    target_os = "solaris"
+    target_os = "solaris",
+    target_os = "aix",
+    target_os = "hurd"
 ))]
 mod unix;

@@ -2,9 +2,9 @@ use std::fmt::Display;
 use std::ops::BitAnd;
 
 use super::*;
-use crate::logical_plan::alp::tree_format::TreeFmtVisitor;
-use crate::logical_plan::conversion::is_regex_projection;
-use crate::logical_plan::visitor::{AexprNode, TreeWalker};
+use crate::plans::conversion::is_regex_projection;
+use crate::plans::ir::tree_format::TreeFmtVisitor;
+use crate::plans::visitor::{AexprNode, TreeWalker};
 
 /// Specialized expressions for Categorical dtypes.
 pub struct MetaNameSpace(pub(crate) Expr);
@@ -68,6 +68,26 @@ impl MetaNameSpace {
         }
     }
 
+    /// Indicate if this expression only selects columns; the presence of any
+    /// transform operations will cause the check to return `false`, though
+    /// aliasing of the selected columns is optionally allowed.
+    pub fn is_column_selection(&self, allow_aliasing: bool) -> bool {
+        self.0.into_iter().all(|e| match e {
+            Expr::Column(_)
+            | Expr::Columns(_)
+            | Expr::DtypeColumn(_)
+            | Expr::Exclude(_, _)
+            | Expr::Nth(_)
+            | Expr::IndexColumn(_)
+            | Expr::Selector(_)
+            | Expr::Wildcard => true,
+            Expr::Alias(_, _) | Expr::KeepName(_) | Expr::RenameAlias { .. } if allow_aliasing => {
+                true
+            },
+            _ => false,
+        })
+    }
+
     /// Indicate if this expression expands to multiple expressions with regex expansion.
     pub fn is_regex_projection(&self) -> bool {
         self.0.into_iter().any(|e| match e {
@@ -89,6 +109,19 @@ impl MetaNameSpace {
         }
     }
 
+    pub fn _selector_and(self, other: Expr) -> PolarsResult<Expr> {
+        if let Expr::Selector(mut s) = self.0 {
+            if let Expr::Selector(s_other) = other {
+                s = s.bitand(s_other);
+            } else {
+                s = s.bitand(Selector::Root(Box::new(other)))
+            }
+            Ok(Expr::Selector(s))
+        } else {
+            polars_bail!(ComputeError: "expected selector, got {:?}", self.0)
+        }
+    }
+
     pub fn _selector_sub(self, other: Expr) -> PolarsResult<Expr> {
         if let Expr::Selector(mut s) = self.0 {
             if let Expr::Selector(s_other) = other {
@@ -102,12 +135,12 @@ impl MetaNameSpace {
         }
     }
 
-    pub fn _selector_and(self, other: Expr) -> PolarsResult<Expr> {
+    pub fn _selector_xor(self, other: Expr) -> PolarsResult<Expr> {
         if let Expr::Selector(mut s) = self.0 {
             if let Expr::Selector(s_other) = other {
-                s = s.bitand(s_other);
+                s = s ^ s_other;
             } else {
-                s = s.bitand(Selector::Root(Box::new(other)))
+                s = s ^ Selector::Root(Box::new(other))
             }
             Ok(Expr::Selector(s))
         } else {

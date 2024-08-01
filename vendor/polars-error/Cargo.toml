@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-error"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = false
 autobins = false
@@ -39,7 +39,7 @@ version = "0.3"
 optional = true
 
 [dependencies.object_store]
-version = "0.9"
+version = "0.10"
 optional = true
 default-features = false
 

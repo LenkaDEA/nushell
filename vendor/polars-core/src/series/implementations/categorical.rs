@@ -55,10 +55,10 @@ impl private::PrivateSeries for SeriesWrap<CategoricalChunked> {
     fn _dtype(&self) -> &DataType {
         self.0.dtype()
     }
-    fn _get_flags(&self) -> Settings {
+    fn _get_flags(&self) -> MetadataFlags {
         self.0.get_flags()
     }
-    fn _set_flags(&mut self, flags: Settings) {
+    fn _set_flags(&mut self, flags: MetadataFlags) {
         self.0.set_flags(flags)
     }
 
@@ -154,6 +154,12 @@ impl SeriesTrait for SeriesWrap<CategoricalChunked> {
         self.with_state(false, |cats| cats.slice(offset, length))
             .into_series()
     }
+    fn split_at(&self, offset: i64) -> (Series, Series) {
+        let (a, b) = self.0.physical().split_at(offset);
+        let a = self.finish_with_state(false, a).into_series();
+        let b = self.finish_with_state(false, b).into_series();
+        (a, b)
+    }
 
     fn append(&mut self, other: &Series) -> PolarsResult<()> {
         polars_ensure!(self.0.dtype() == other.dtype(), append);
@@ -217,8 +223,8 @@ impl SeriesTrait for SeriesWrap<CategoricalChunked> {
             .into_series()
     }
 
-    fn cast(&self, data_type: &DataType) -> PolarsResult<Series> {
-        self.0.cast(data_type)
+    fn cast(&self, data_type: &DataType, options: CastOptions) -> PolarsResult<Series> {
+        self.0.cast_with_options(data_type, options)
     }
 
     fn get(&self, index: usize) -> PolarsResult<AnyValue> {
@@ -298,10 +304,7 @@ impl SeriesTrait for SeriesWrap<CategoricalChunked> {
 }
 
 impl private::PrivateSeriesNumeric for SeriesWrap<CategoricalChunked> {
-    fn bit_repr_is_large(&self) -> bool {
-        false
-    }
-    fn bit_repr_small(&self) -> UInt32Chunked {
-        self.0.physical().clone()
+    fn bit_repr(&self) -> Option<BitRepr> {
+        Some(BitRepr::Small(self.0.physical().clone()))
     }
 }

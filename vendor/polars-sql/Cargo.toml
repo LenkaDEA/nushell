@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars-sql"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = false
 autobins = false
@@ -34,63 +34,47 @@ name = "empty_table_function"
 path = "tests/empty_table_function.rs"
 
 [[test]]
-name = "iss_7436"
-path = "tests/iss_7436.rs"
-
-[[test]]
-name = "iss_8419"
-path = "tests/iss_8419.rs"
-
-[[test]]
-name = "udf"
-path = "tests/udf.rs"
-
-[[test]]
-name = "functions_meta"
-path = "tests/functions_meta.rs"
-
-[[test]]
-name = "ops_distinct_on"
-path = "tests/ops_distinct_on.rs"
-
-[[test]]
 name = "functions_cumulative"
 path = "tests/functions_cumulative.rs"
-
-[[test]]
-name = "simple_exprs"
-path = "tests/simple_exprs.rs"
-
-[[test]]
-name = "iss_7440"
-path = "tests/iss_7440.rs"
-
-[[test]]
-name = "functions_string"
-path = "tests/functions_string.rs"
-
-[[test]]
-name = "statements"
-path = "tests/statements.rs"
 
 [[test]]
 name = "functions_io"
 path = "tests/functions_io.rs"
 
 [[test]]
-name = "iss_8395"
-path = "tests/iss_8395.rs"
-
-[[test]]
 name = "functions_math"
 path = "tests/functions_math.rs"
 
 [[test]]
-name = "iss_7437"
-path = "tests/iss_7437.rs"
+name = "functions_meta"
+path = "tests/functions_meta.rs"
+
+[[test]]
+name = "functions_string"
+path = "tests/functions_string.rs"
+
+[[test]]
+name = "issues"
+path = "tests/issues.rs"
+
+[[test]]
+name = "ops_distinct_on"
+path = "tests/ops_distinct_on.rs"
+
+[[test]]
+name = "simple_exprs"
+path = "tests/simple_exprs.rs"
+
+[[test]]
+name = "statements"
+path = "tests/statements.rs"
+
+[[test]]
+name = "udf"
+path = "tests/udf.rs"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -110,15 +94,16 @@ version = "0.4.3"
 version = "1"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
+features = ["rows"]
 default-features = false
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-lazy]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "abs",
     "binary_encoding",
@@ -127,6 +112,7 @@ features = [
     "cum_agg",
     "dtype-date",
     "dtype-decimal",
+    "dtype-struct",
     "is_in",
     "list_eval",
     "log",
@@ -141,8 +127,16 @@ features = [
 ]
 default-features = false
 
+[dependencies.polars-ops]
+version = "0.41.2"
+default-features = false
+
 [dependencies.polars-plan]
-version = "0.40.0"
+version = "0.41.2"
+default-features = false
+
+[dependencies.polars-time]
+version = "0.41.2"
 default-features = false
 
 [dependencies.rand]
@@ -156,10 +150,10 @@ features = ["derive"]
 version = "1"
 
 [dependencies.sqlparser]
-version = "0.39"
+version = "0.47"
 
 [dev-dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = ["fmt"]
 default-features = false
 

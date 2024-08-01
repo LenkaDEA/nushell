@@ -1,14 +1,13 @@
 //! Special list utility methods
 pub(super) mod iterator;
 
-use crate::chunked_array::Settings;
 use crate::prelude::*;
 
 impl ListChunked {
     /// Get the inner data type of the list.
-    pub fn inner_dtype(&self) -> DataType {
+    pub fn inner_dtype(&self) -> &DataType {
         match self.dtype() {
-            DataType::List(dt) => *dt.clone(),
+            DataType::List(dt) => dt.as_ref(),
             _ => unreachable!(),
         }
     }
@@ -18,15 +17,13 @@ impl ListChunked {
         let field = Arc::make_mut(&mut self.field);
         field.coerce(DataType::List(Box::new(dtype)));
     }
+
     pub fn set_fast_explode(&mut self) {
-        self.bit_settings.insert(Settings::FAST_EXPLODE_LIST)
-    }
-    pub(crate) fn unset_fast_explode(&mut self) {
-        self.bit_settings.remove(Settings::FAST_EXPLODE_LIST)
+        self.set_fast_explode_list(true)
     }
 
     pub fn _can_fast_explode(&self) -> bool {
-        self.bit_settings.contains(Settings::FAST_EXPLODE_LIST)
+        self.get_fast_explode_list()
     }
 
     /// Set the logical type of the [`ListChunked`].
@@ -34,7 +31,7 @@ impl ListChunked {
     /// # Safety
     /// The caller must ensure that the logical type given fits the physical type of the array.
     pub unsafe fn to_logical(&mut self, inner_dtype: DataType) {
-        debug_assert_eq!(inner_dtype.to_physical(), self.inner_dtype());
+        debug_assert_eq!(&inner_dtype.to_physical(), self.inner_dtype());
         let fld = Arc::make_mut(&mut self.field);
         fld.coerce(DataType::List(Box::new(inner_dtype)))
     }
@@ -44,7 +41,7 @@ impl ListChunked {
         let chunks: Vec<_> = self.downcast_iter().map(|c| c.values().clone()).collect();
 
         // SAFETY: Data type of arrays matches because they are chunks from the same array.
-        unsafe { Series::from_chunks_and_dtype_unchecked(self.name(), chunks, &self.inner_dtype()) }
+        unsafe { Series::from_chunks_and_dtype_unchecked(self.name(), chunks, self.inner_dtype()) }
     }
 
     /// Returns an iterator over the offsets of this chunked array.
@@ -81,7 +78,7 @@ impl ListChunked {
             Series::from_chunks_and_dtype_unchecked(
                 self.name(),
                 vec![arr.values().clone()],
-                &ca.inner_dtype(),
+                ca.inner_dtype(),
             )
         };
 

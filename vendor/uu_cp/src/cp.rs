@@ -7,7 +7,6 @@
 use quick_error::quick_error;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use std::env;
 #[cfg(not(windows))]
 use std::ffi::CString;
 use std::fs::{self, File, Metadata, OpenOptions, Permissions};
@@ -170,7 +169,7 @@ pub enum CopyMode {
 /// For full compatibility with GNU, these options should also combine. We
 /// currently only do a best effort imitation of that behavior, because it is
 /// difficult to achieve in clap, especially with `--no-preserve`.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Attributes {
     #[cfg(unix)]
     pub ownership: Preserve,
@@ -406,6 +405,11 @@ static PRESERVABLE_ATTRIBUTES: &[&str] = &[
 static PRESERVABLE_ATTRIBUTES: &[&str] =
     &["mode", "timestamps", "context", "links", "xattr", "all"];
 
+const PRESERVE_DEFAULT_VALUES: &str = if cfg!(unix) {
+    "mode,ownership,timestamp"
+} else {
+    "mode,timestamp"
+};
 pub fn uu_app() -> Command {
     const MODE_ARGS: &[&str] = &[
         options::LINK,
@@ -556,11 +560,7 @@ pub fn uu_app() -> Command {
                 .num_args(0..)
                 .require_equals(true)
                 .value_name("ATTR_LIST")
-                .overrides_with_all([
-                    options::ARCHIVE,
-                    options::PRESERVE_DEFAULT_ATTRIBUTES,
-                    options::NO_PRESERVE,
-                ])
+                .default_missing_value(PRESERVE_DEFAULT_VALUES)
                 // -d sets this option
                 // --archive sets this option
                 .help(
@@ -572,19 +572,18 @@ pub fn uu_app() -> Command {
             Arg::new(options::PRESERVE_DEFAULT_ATTRIBUTES)
                 .short('p')
                 .long(options::PRESERVE_DEFAULT_ATTRIBUTES)
-                .overrides_with_all([options::PRESERVE, options::NO_PRESERVE, options::ARCHIVE])
                 .help("same as --preserve=mode,ownership(unix only),timestamps")
                 .action(ArgAction::SetTrue),
         )
         .arg(
             Arg::new(options::NO_PRESERVE)
                 .long(options::NO_PRESERVE)
+                .action(ArgAction::Append)
+                .use_value_delimiter(true)
+                .value_parser(ShortcutValueParser::new(PRESERVABLE_ATTRIBUTES))
+                .num_args(0..)
+                .require_equals(true)
                 .value_name("ATTR_LIST")
-                .overrides_with_all([
-                    options::PRESERVE_DEFAULT_ATTRIBUTES,
-                    options::PRESERVE,
-                    options::ARCHIVE,
-                ])
                 .help("don't preserve the specified attributes"),
         )
         .arg(
@@ -621,11 +620,6 @@ pub fn uu_app() -> Command {
             Arg::new(options::ARCHIVE)
                 .short('a')
                 .long(options::ARCHIVE)
-                .overrides_with_all([
-                    options::PRESERVE_DEFAULT_ATTRIBUTES,
-                    options::PRESERVE,
-                    options::NO_PRESERVE,
-                ])
                 .help("Same as -dR --preserve=all")
                 .action(ArgAction::SetTrue),
         )
@@ -839,6 +833,27 @@ impl Attributes {
         }
     }
 
+    /// Set the field to Preserve::NO { explicit: true } if the corresponding field
+    /// in other is set to Preserve::Yes { .. }.
+    pub fn diff(self, other: &Self) -> Self {
+        fn update_preserve_field(current: Preserve, other: Preserve) -> Preserve {
+            if matches!(other, Preserve::Yes { .. }) {
+                Preserve::No { explicit: true }
+            } else {
+                current
+            }
+        }
+        Self {
+            #[cfg(unix)]
+            ownership: update_preserve_field(self.ownership, other.ownership),
+            mode: update_preserve_field(self.mode, other.mode),
+            timestamps: update_preserve_field(self.timestamps, other.timestamps),
+            context: update_preserve_field(self.context, other.context),
+            links: update_preserve_field(self.links, other.links),
+            xattr: update_preserve_field(self.xattr, other.xattr),
+        }
+    }
+
     pub fn parse_iter<T>(values: impl Iterator<Item = T>) -> Result<Self, Error>
     where
         T: AsRef<str>,
@@ -926,34 +941,85 @@ impl Options {
             }
         };
 
-        // Parse attributes to preserve
-        let mut attributes =
-            if let Some(attribute_strs) = matches.get_many::<String>(options::PRESERVE) {
-                if attribute_strs.len() == 0 {
-                    Attributes::DEFAULT
-                } else {
-                    Attributes::parse_iter(attribute_strs)?
+        // cp follows POSIX conventions for overriding options such as "-a",
+        // "-d", "--preserve", and "--no-preserve". We can use clap's
+        // override-all behavior to achieve this, but there's a challenge: when
+        // clap overrides an argument, it removes all traces of it from the
+        // match. This poses a problem because flags like "-a" expand to "-dR
+        // --preserve=all", and we only want to override the "--preserve=all"
+        // part. Additionally, we need to handle multiple occurrences of the
+        // same flags. To address this, we create an overriding order from the
+        // matches here.
+        let mut overriding_order: Vec<(usize, &str, Vec<&String>)> = vec![];
+        // We iterate through each overriding option, adding each occurrence of
+        // the option along with its value and index as a tuple, and push it to
+        // `overriding_order`.
+        for option in [
+            options::PRESERVE,
+            options::NO_PRESERVE,
+            options::ARCHIVE,
+            options::PRESERVE_DEFAULT_ATTRIBUTES,
+            options::NO_DEREFERENCE_PRESERVE_LINKS,
+        ] {
+            if let (Ok(Some(val)), Some(index)) = (
+                matches.try_get_one::<bool>(option),
+                // even though it says in the doc that `index_of` would give us
+                // the first index of the argument, when it comes to flag it
+                // gives us the last index where the flag appeared (probably
+                // because it overrides itself). Since it is a flag and it would
+                // have same value across the occurrences we just need the last
+                // index.
+                matches.index_of(option),
+            ) {
+                if *val {
+                    overriding_order.push((index, option, vec![]));
                 }
-            } else if matches.get_flag(options::ARCHIVE) {
-                // --archive is used. Same as --preserve=all
-                Attributes::ALL
-            } else if matches.get_flag(options::NO_DEREFERENCE_PRESERVE_LINKS) {
-                Attributes::LINKS
-            } else if matches.get_flag(options::PRESERVE_DEFAULT_ATTRIBUTES) {
-                Attributes::DEFAULT
-            } else {
-                Attributes::NONE
-            };
+            } else if let (Some(occurrences), Some(mut indices)) = (
+                matches.get_occurrences::<String>(option),
+                matches.indices_of(option),
+            ) {
+                occurrences.for_each(|val| {
+                    if let Some(index) = indices.next() {
+                        let val = val.collect::<Vec<&String>>();
+                        // As mentioned in the documentation of the indices_of
+                        // function, it provides the indices of the individual
+                        // values. Therefore, to get the index of the first
+                        // value of the next occurrence in the next iteration,
+                        // we need to advance the indices iterator by the length
+                        // of the current occurrence's values.
+                        for _ in 1..val.len() {
+                            indices.next();
+                        }
+                        overriding_order.push((index, option, val));
+                    }
+                });
+            }
+        }
+        overriding_order.sort_by(|a, b| a.0.cmp(&b.0));
 
-        // handling no-preserve options and adjusting the attributes
-        if let Some(attribute_strs) = matches.get_many::<String>(options::NO_PRESERVE) {
-            if attribute_strs.len() > 0 {
-                let no_preserve_attributes = Attributes::parse_iter(attribute_strs)?;
-                if matches!(no_preserve_attributes.links, Preserve::Yes { .. }) {
-                    attributes.links = Preserve::No { explicit: true };
-                } else if matches!(no_preserve_attributes.mode, Preserve::Yes { .. }) {
-                    attributes.mode = Preserve::No { explicit: true };
+        let mut attributes = Attributes::NONE;
+
+        // Iterate through the `overriding_order` and adjust the attributes accordingly.
+        for (_, option, val) in overriding_order {
+            match option {
+                options::ARCHIVE => {
+                    attributes = Attributes::ALL;
                 }
+                options::PRESERVE_DEFAULT_ATTRIBUTES => {
+                    attributes = attributes.union(&Attributes::DEFAULT);
+                }
+                options::NO_DEREFERENCE_PRESERVE_LINKS => {
+                    attributes = attributes.union(&Attributes::LINKS);
+                }
+                options::PRESERVE => {
+                    attributes = attributes.union(&Attributes::parse_iter(val.into_iter())?);
+                }
+                options::NO_PRESERVE => {
+                    if !val.is_empty() {
+                        attributes = attributes.diff(&Attributes::parse_iter(val.into_iter())?);
+                    }
+                }
+                _ => (),
             }
         }
 
@@ -977,7 +1043,9 @@ impl Options {
             dereference: !(matches.get_flag(options::NO_DEREFERENCE)
                 || matches.get_flag(options::NO_DEREFERENCE_PRESERVE_LINKS)
                 || matches.get_flag(options::ARCHIVE)
-                || recursive)
+                // cp normally follows the link only when not copying recursively or when
+                // --link (-l) is used
+                || (recursive && CopyMode::from_matches(matches)!= CopyMode::Link ))
                 || matches.get_flag(options::DEREFERENCE),
             one_file_system: matches.get_flag(options::ONE_FILE_SYSTEM),
             parents: matches.get_flag(options::PARENTS),
@@ -1120,6 +1188,9 @@ fn parse_path_args(
     };
 
     if options.strip_trailing_slashes {
+        // clippy::assigning_clones added with Rust 1.78
+        // Rust version = 1.76 on OpenBSD stable/7.5
+        #[cfg_attr(not(target_os = "openbsd"), allow(clippy::assigning_clones))]
         for source in &mut paths {
             *source = source.components().as_path().to_owned();
         }
@@ -1217,12 +1288,14 @@ pub fn copy(sources: &[PathBuf], target: &Path, options: &Options) -> CopyResult
                 target_type,
                 options,
                 &mut symlinked_files,
+                &copied_destinations,
                 &mut copied_files,
             ) {
                 show_error_if_needed(&error);
                 non_fatal_errors = true;
+            } else {
+                copied_destinations.insert(dest.clone());
             }
-            copied_destinations.insert(dest.clone());
         }
         seen_sources.insert(source);
     }
@@ -1259,7 +1332,11 @@ fn construct_dest_path(
     Ok(match target_type {
         TargetType::Directory => {
             let root = if options.parents {
-                Path::new("")
+                if source_path.has_root() && cfg!(unix) {
+                    Path::new("/")
+                } else {
+                    Path::new("")
+                }
             } else {
                 source_path.parent().unwrap_or(source_path)
             };
@@ -1268,7 +1345,7 @@ fn construct_dest_path(
         TargetType::File => target.to_path_buf(),
     })
 }
-
+#[allow(clippy::too_many_arguments)]
 fn copy_source(
     progress_bar: &Option<ProgressBar>,
     source: &Path,
@@ -1276,6 +1353,7 @@ fn copy_source(
     target_type: TargetType,
     options: &Options,
     symlinked_files: &mut HashSet<FileInformation>,
+    copied_destinations: &HashSet<PathBuf>,
     copied_files: &mut HashMap<FileInformation, PathBuf>,
 ) -> CopyResult<()> {
     let source_path = Path::new(&source);
@@ -1287,6 +1365,7 @@ fn copy_source(
             target,
             options,
             symlinked_files,
+            copied_destinations,
             copied_files,
             true,
         )
@@ -1299,12 +1378,15 @@ fn copy_source(
             dest.as_path(),
             options,
             symlinked_files,
+            copied_destinations,
             copied_files,
             true,
         );
         if options.parents {
             for (x, y) in aligned_ancestors(source, dest.as_path()) {
-                copy_attributes(x, y, &options.attributes)?;
+                if let Ok(src) = canonicalize(x, MissingHandling::Normal, ResolveMode::Physical) {
+                    copy_attributes(&src, y, &options.attributes)?;
+                }
             }
         }
         res
@@ -1367,8 +1449,8 @@ pub(crate) fn copy_attributes(
 
         let dest_uid = source_metadata.uid();
         let dest_gid = source_metadata.gid();
-
-        wrap_chown(
+        // gnu compatibility: cp doesn't report an error if it fails to set the ownership.
+        let _ = wrap_chown(
             dest,
             &dest.symlink_metadata().context(context)?,
             Some(dest_uid),
@@ -1376,11 +1458,9 @@ pub(crate) fn copy_attributes(
             false,
             Verbosity {
                 groups_only: false,
-                level: VerbosityLevel::Normal,
+                level: VerbosityLevel::Silent,
             },
-        )
-        .map_err(Error::Error)?;
-
+        );
         Ok(())
     })?;
 
@@ -1617,8 +1697,8 @@ fn handle_existing_dest(
             // linking.
 
             if options.preserve_hard_links()
-            // only try to remove dest file only if the current source 
-            // is hardlink to a file that is already copied  
+            // only try to remove dest file only if the current source
+            // is hardlink to a file that is already copied
                 && copied_files.contains_key(
                     &FileInformation::from_path(
                         source,
@@ -1734,7 +1814,7 @@ fn handle_copy_mode(
     dest: &Path,
     options: &Options,
     context: &str,
-    source_metadata: Metadata,
+    source_metadata: &Metadata,
     symlinked_files: &mut HashSet<FileInformation>,
     source_in_command_line: bool,
 ) -> CopyResult<()> {
@@ -1907,13 +1987,14 @@ fn calculate_dest_permissions(
 ///
 /// The original permissions of `source` will be copied to `dest`
 /// after a successful copy.
-#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity, clippy::too_many_arguments)]
 fn copy_file(
     progress_bar: &Option<ProgressBar>,
     source: &Path,
     dest: &Path,
     options: &Options,
     symlinked_files: &mut HashSet<FileInformation>,
+    copied_destinations: &HashSet<PathBuf>,
     copied_files: &mut HashMap<FileInformation, PathBuf>,
     source_in_command_line: bool,
 ) -> CopyResult<()> {
@@ -1931,6 +2012,17 @@ fn copy_file(
                 dest.display()
             )));
         }
+        // Fail if cp tries to copy two sources of the same name into a single symlink
+        // Example: "cp file1 dir1/file1 tmp" where "tmp" is a directory containing a symlink "file1" pointing to a file named "foo".
+        // foo will contain the contents of "file1" and "dir1/file1" will not be copied over to "tmp/file1"
+        if copied_destinations.contains(dest) {
+            return Err(Error::Error(format!(
+                "will not copy '{}' through just-created symlink '{}'",
+                source.display(),
+                dest.display()
+            )));
+        }
+
         let copy_contents = options.dereference(source_in_command_line) || !source_is_symlink;
         if copy_contents
             && !dest.exists()
@@ -2043,7 +2135,13 @@ fn copy_file(
         } else {
             fs::symlink_metadata(source)
         };
-        result.context(context)?
+        // this is just for gnu tests compatibility
+        result.map_err(|err| {
+            if err.to_string().contains("No such file or directory") {
+                return format!("cannot stat {}: No such file or directory", source.quote());
+            }
+            err.to_string()
+        })?
     };
 
     let dest_permissions = calculate_dest_permissions(dest, &source_metadata, options, context)?;
@@ -2053,7 +2151,7 @@ fn copy_file(
         dest,
         options,
         context,
-        source_metadata,
+        &source_metadata,
         symlinked_files,
         source_in_command_line,
     )?;
@@ -2069,7 +2167,13 @@ fn copy_file(
         fs::set_permissions(dest, dest_permissions).ok();
     }
 
-    copy_attributes(source, dest, &options.attributes)?;
+    if options.dereference(source_in_command_line) {
+        if let Ok(src) = canonicalize(source, MissingHandling::Normal, ResolveMode::Physical) {
+            copy_attributes(&src, dest, &options.attributes)?;
+        }
+    } else {
+        copy_attributes(source, dest, &options.attributes)?;
+    }
 
     copied_files.insert(
         FileInformation::from_path(source, options.dereference(source_in_command_line))?,
@@ -2094,7 +2198,6 @@ fn handle_no_preserve_mode(options: &Options, org_mode: u32) -> u32 {
         #[cfg(not(any(
             target_os = "android",
             target_os = "macos",
-            target_os = "macos-12",
             target_os = "freebsd",
             target_os = "redox",
         )))]
@@ -2111,7 +2214,6 @@ fn handle_no_preserve_mode(options: &Options, org_mode: u32) -> u32 {
         #[cfg(any(
             target_os = "android",
             target_os = "macos",
-            target_os = "macos-12",
             target_os = "freebsd",
             target_os = "redox",
         ))]
@@ -2281,7 +2383,7 @@ fn disk_usage_directory(p: &Path) -> io::Result<u64> {
 #[cfg(test)]
 mod tests {
 
-    use crate::{aligned_ancestors, localize_to_target};
+    use crate::{aligned_ancestors, localize_to_target, Attributes, Preserve};
     use std::path::Path;
 
     #[test]
@@ -2302,5 +2404,53 @@ mod tests {
             (Path::new("a/b"), Path::new("d/a/b")),
         ];
         assert_eq!(actual, expected);
+    }
+    #[test]
+    fn test_diff_attrs() {
+        assert_eq!(
+            Attributes::ALL.diff(&Attributes {
+                context: Preserve::Yes { required: true },
+                xattr: Preserve::Yes { required: true },
+                ..Attributes::ALL
+            }),
+            Attributes {
+                #[cfg(unix)]
+                ownership: Preserve::No { explicit: true },
+                mode: Preserve::No { explicit: true },
+                timestamps: Preserve::No { explicit: true },
+                context: Preserve::No { explicit: true },
+                links: Preserve::No { explicit: true },
+                xattr: Preserve::No { explicit: true }
+            }
+        );
+        assert_eq!(
+            Attributes {
+                context: Preserve::Yes { required: true },
+                xattr: Preserve::Yes { required: true },
+                ..Attributes::ALL
+            }
+            .diff(&Attributes::NONE),
+            Attributes {
+                context: Preserve::Yes { required: true },
+                xattr: Preserve::Yes { required: true },
+                ..Attributes::ALL
+            }
+        );
+        assert_eq!(
+            Attributes::NONE.diff(&Attributes {
+                context: Preserve::Yes { required: true },
+                xattr: Preserve::Yes { required: true },
+                ..Attributes::ALL
+            }),
+            Attributes {
+                #[cfg(unix)]
+                ownership: Preserve::No { explicit: true },
+                mode: Preserve::No { explicit: true },
+                timestamps: Preserve::No { explicit: true },
+                context: Preserve::No { explicit: true },
+                links: Preserve::No { explicit: true },
+                xattr: Preserve::No { explicit: true }
+            }
+        );
     }
 }

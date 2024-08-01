@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use polars_core::prelude::*;
+use polars_io::cloud::CloudOptions;
 use polars_io::csv::read::{
     infer_file_schema, CommentPrefix, CsvEncoding, CsvParseOptions, CsvReadOptions, NullValues,
 };
@@ -12,11 +13,11 @@ use crate::prelude::*;
 #[derive(Clone)]
 #[cfg(feature = "csv")]
 pub struct LazyCsvReader {
-    path: PathBuf,
     paths: Arc<[PathBuf]>,
     glob: bool,
     cache: bool,
     read_options: CsvReadOptions,
+    cloud_options: Option<CloudOptions>,
 }
 
 #[cfg(feature = "csv")]
@@ -33,11 +34,11 @@ impl LazyCsvReader {
 
     pub fn new(path: impl AsRef<Path>) -> Self {
         LazyCsvReader {
-            path: path.as_ref().to_owned(),
-            paths: Arc::new([]),
+            paths: Arc::new([path.as_ref().to_path_buf()]),
             glob: true,
             cache: true,
             read_options: Default::default(),
+            cloud_options: Default::default(),
         }
     }
 
@@ -203,6 +204,11 @@ impl LazyCsvReader {
         self
     }
 
+    pub fn with_cloud_options(mut self, cloud_options: Option<CloudOptions>) -> Self {
+        self.cloud_options = cloud_options;
+        self
+    }
+
     /// Modify a schema before we run the lazy scanning.
     ///
     /// Important! Run this function latest in the builder!
@@ -210,17 +216,15 @@ impl LazyCsvReader {
     where
         F: Fn(Schema) -> PolarsResult<Schema>,
     {
-        let mut file = if let Some(mut paths) = self.iter_paths()? {
-            let path = match paths.next() {
-                Some(globresult) => globresult?,
-                None => polars_bail!(ComputeError: "globbing pattern did not match any files"),
-            };
-            polars_utils::open_file(path)
-        } else {
-            polars_utils::open_file(&self.path)
-        }?;
+        let paths = self.expand_paths(false)?.0;
+        let Some(path) = paths.first() else {
+            polars_bail!(ComputeError: "no paths specified for this reader");
+        };
+
+        let mut file = polars_utils::open_file(path)?;
+
         let reader_bytes = get_reader_bytes(&mut file).expect("could not mmap file");
-        let mut skip_rows = self.read_options.skip_rows;
+        let skip_rows = self.read_options.skip_rows;
         let parse_options = self.read_options.get_parse_options();
 
         let (schema, _, _) = infer_file_schema(
@@ -230,7 +234,7 @@ impl LazyCsvReader {
             self.read_options.has_header,
             // we set it to None and modify them after the schema is updated
             None,
-            &mut skip_rows,
+            skip_rows,
             self.read_options.skip_rows_after_header,
             parse_options.comment_prefix.as_ref(),
             parse_options.quote_char,
@@ -256,48 +260,28 @@ impl LazyCsvReader {
 
 impl LazyFileListReader for LazyCsvReader {
     /// Get the final [LazyFrame].
-    fn finish(mut self) -> PolarsResult<LazyFrame> {
-        if !self.glob {
-            return self.finish_no_glob();
-        }
-        if let Some(paths) = self.iter_paths()? {
-            let paths = paths
-                .into_iter()
-                .collect::<PolarsResult<Arc<[PathBuf]>>>()?;
-            self.paths = paths;
-        }
-        self.finish_no_glob()
+    fn finish(self) -> PolarsResult<LazyFrame> {
+        // `expand_paths` respects globs
+        let paths = self.expand_paths(false)?.0;
+
+        let mut lf: LazyFrame =
+            DslBuilder::scan_csv(paths, self.read_options, self.cache, self.cloud_options)?
+                .build()
+                .into();
+        lf.opt_state.file_caching = true;
+        Ok(lf)
     }
 
     fn finish_no_glob(self) -> PolarsResult<LazyFrame> {
-        let paths = if self.paths.is_empty() {
-            Arc::new([self.path])
-        } else {
-            self.paths
-        };
-
-        let mut lf: LazyFrame = DslBuilder::scan_csv(paths, self.read_options, self.cache)?
-            .build()
-            .into();
-        lf.opt_state.file_caching = true;
-        Ok(lf)
+        unreachable!();
     }
 
     fn glob(&self) -> bool {
         self.glob
     }
 
-    fn path(&self) -> &Path {
-        &self.path
-    }
-
     fn paths(&self) -> &[PathBuf] {
         &self.paths
-    }
-
-    fn with_path(mut self, path: PathBuf) -> Self {
-        self.path = path;
-        self
     }
 
     fn with_paths(mut self, paths: Arc<[PathBuf]>) -> Self {

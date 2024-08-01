@@ -26,9 +26,8 @@ use crate::tokenizer::{Doctype, EndTag, StartTag, Tag, TokenSink, TokenSinkResul
 
 use std::borrow::Cow::Borrowed;
 use std::collections::VecDeque;
-use std::default::Default;
 use std::iter::{Enumerate, Rev};
-use std::mem::replace;
+use std::mem;
 use std::{fmt, slice};
 
 use crate::tokenizer::states::{RawData, RawKind};
@@ -36,7 +35,7 @@ use crate::tree_builder::tag_sets::*;
 use crate::tree_builder::types::*;
 use crate::util::str::to_escaped_string;
 use log::{debug, log_enabled, warn, Level};
-use mac::{_tt_as_expr_hack, format_if, matches};
+use mac::{_tt_as_expr_hack, format_if};
 
 pub use self::PushFlag::*;
 
@@ -237,11 +236,11 @@ where
         match *name {
             local_name!("title") | local_name!("textarea") => tok_state::RawData(tok_state::Rcdata),
 
-            local_name!("style") |
-            local_name!("xmp") |
-            local_name!("iframe") |
-            local_name!("noembed") |
-            local_name!("noframes") => tok_state::RawData(tok_state::Rawtext),
+            local_name!("style")
+            | local_name!("xmp")
+            | local_name!("iframe")
+            | local_name!("noembed")
+            | local_name!("noframes") => tok_state::RawData(tok_state::Rawtext),
 
             local_name!("script") => tok_state::RawData(tok_state::ScriptData),
 
@@ -261,7 +260,7 @@ where
 
     /// Call the `Tracer`'s `trace_handle` method on every `Handle` in the tree builder's
     /// internal state.  This is intended to support garbage-collected DOMs.
-    pub fn trace_handles(&self, tracer: &Tracer<Handle = Handle>) {
+    pub fn trace_handles(&self, tracer: &dyn Tracer<Handle = Handle>) {
         tracer.trace_handle(&self.doc_handle);
         for e in &self.open_elems {
             tracer.trace_handle(e);
@@ -456,7 +455,7 @@ where
         if line_number != self.current_line {
             self.sink.set_current_line(line_number);
         }
-        let ignore_lf = replace(&mut self.ignore_lf, false);
+        let ignore_lf = mem::take(&mut self.ignore_lf);
 
         // Handle `ParseError` and `DoctypeToken`; convert everything else to the local `Token` type.
         let token = match token {
@@ -530,8 +529,8 @@ where
     }
 
     fn adjusted_current_node_present_but_not_in_html_namespace(&self) -> bool {
-        !self.open_elems.is_empty() &&
-            self.sink.elem_name(self.adjusted_current_node()).ns != &ns!(html)
+        !self.open_elems.is_empty()
+            && self.sink.elem_name(self.adjusted_current_node()).ns != &ns!(html)
     }
 }
 
@@ -851,8 +850,8 @@ where
                 Bookmark::InsertAfter(previous) => {
                     let index = self
                         .position_in_active_formatting(&previous)
-                        .expect("bookmark not found in active formatting elements") +
-                        1;
+                        .expect("bookmark not found in active formatting elements")
+                        + 1;
                     self.active_formatting.insert(index, new_entry);
                     let old_index = self
                         .position_in_active_formatting(&fmt_elem)
@@ -1300,11 +1299,11 @@ where
         };
 
         // Step 12.
-        if form_associatable(qname.expanded()) &&
-            self.form_elem.is_some() &&
-            !self.in_html_elem_named(local_name!("template")) &&
-            !(listed(qname.expanded()) &&
-                attrs
+        if form_associatable(qname.expanded())
+            && self.form_elem.is_some()
+            && !self.in_html_elem_named(local_name!("template"))
+            && !(listed(qname.expanded())
+                && attrs
                     .iter()
                     .any(|a| a.name.expanded() == expanded_name!("", "form")))
         {
@@ -1630,7 +1629,6 @@ where
             local_name!("xlink:show") => Some(qualname!("xlink" xlink "show")),
             local_name!("xlink:title") => Some(qualname!("xlink" xlink "title")),
             local_name!("xlink:type") => Some(qualname!("xlink" xlink "type")),
-            local_name!("xml:base") => Some(qualname!("xml" xml "base")),
             local_name!("xml:lang") => Some(qualname!("xml" xml "lang")),
             local_name!("xml:space") => Some(qualname!("xml" xml "space")),
             local_name!("xmlns") => Some(qualname!("" xmlns "xmlns")),
@@ -1662,18 +1660,11 @@ where
 
     fn unexpected_start_tag_in_foreign_content(&mut self, tag: Tag) -> ProcessResult<Handle> {
         self.unexpected(&tag);
-        if self.is_fragment() {
-            self.foreign_start_tag(tag)
-        } else {
+        while !self.current_node_in(|n| {
+            *n.ns == ns!(html) || mathml_text_integration_point(n) || svg_html_integration_point(n)
+        }) {
             self.pop();
-            while !self.current_node_in(|n| {
-                *n.ns == ns!(html) ||
-                    mathml_text_integration_point(n) ||
-                    svg_html_integration_point(n)
-            }) {
-                self.pop();
-            }
-            ReprocessForeign(TagToken(tag))
         }
+        self.step(self.mode, TagToken(tag))
     }
 }

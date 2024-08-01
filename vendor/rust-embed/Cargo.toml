@@ -11,9 +11,9 @@
 
 [package]
 edition = "2018"
-rust-version = "1.60.0"
+rust-version = "1.70.0"
 name = "rust-embed"
-version = "8.4.0"
+version = "8.5.0"
 authors = ["pyros2097 <pyros2097@gmail.com>"]
 description = "Rust Custom Derive Macro which loads files into the rust binary at compile time during release and loads the file from the fs during dev"
 documentation = "https://docs.rs/rust-embed"
@@ -100,8 +100,7 @@ version = "0.4.3"
 optional = true
 
 [dependencies.include-flate]
-version = "0.2"
-features = ["stable"]
+version = "0.3"
 optional = true
 
 [dependencies.mime_guess]

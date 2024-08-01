@@ -21,7 +21,6 @@ pub struct SchemaInferenceResult {
     rows_read: usize,
     bytes_read: usize,
     bytes_total: usize,
-    skip_rows: usize,
     n_threads: Option<usize>,
 }
 
@@ -37,7 +36,7 @@ impl SchemaInferenceResult {
         let has_header = options.has_header;
         let schema_overwrite_arc = options.schema_overwrite.clone();
         let schema_overwrite = schema_overwrite_arc.as_ref().map(|x| x.as_ref());
-        let mut skip_rows = options.skip_rows;
+        let skip_rows = options.skip_rows;
         let skip_rows_after_header = options.skip_rows_after_header;
         let comment_prefix = parse_options.comment_prefix.as_ref();
         let quote_char = parse_options.quote_char;
@@ -56,7 +55,7 @@ impl SchemaInferenceResult {
             infer_schema_length,
             has_header,
             schema_overwrite,
-            &mut skip_rows,
+            skip_rows,
             skip_rows_after_header,
             comment_prefix,
             quote_char,
@@ -73,7 +72,6 @@ impl SchemaInferenceResult {
             rows_read,
             bytes_read,
             bytes_total,
-            skip_rows,
             n_threads,
         };
 
@@ -97,13 +95,28 @@ impl SchemaInferenceResult {
 impl CsvReadOptions {
     /// Note: This does not update the schema from the inference result.
     pub fn update_with_inference_result(&mut self, si_result: &SchemaInferenceResult) {
-        self.skip_rows = si_result.skip_rows;
         self.n_threads = si_result.n_threads;
     }
 }
 
+pub fn finish_infer_field_schema(possibilities: &PlHashSet<DataType>) -> DataType {
+    // determine data type based on possible types
+    // if there are incompatible types, use DataType::String
+    match possibilities.len() {
+        1 => possibilities.iter().next().unwrap().clone(),
+        2 if possibilities.contains(&DataType::Int64)
+            && possibilities.contains(&DataType::Float64) =>
+        {
+            // we have an integer and double, fall down to double
+            DataType::Float64
+        },
+        // default to String for conflicting datatypes (e.g bool and int)
+        _ => DataType::String,
+    }
+}
+
 /// Infer the data type of a record
-fn infer_field_schema(string: &str, try_parse_dates: bool, decimal_comma: bool) -> DataType {
+pub fn infer_field_schema(string: &str, try_parse_dates: bool, decimal_comma: bool) -> DataType {
     // when quoting is enabled in the reader, these quotes aren't escaped, we default to
     // String for them
     if string.starts_with('"') {
@@ -184,7 +197,7 @@ fn infer_file_schema_inner(
     schema_overwrite: Option<&Schema>,
     // we take &mut because we maybe need to skip more rows dependent
     // on the schema inference
-    skip_rows: &mut usize,
+    mut skip_rows: usize,
     skip_rows_after_header: usize,
     comment_prefix: Option<&CommentPrefix>,
     quote_char: Option<u8>,
@@ -207,7 +220,7 @@ fn infer_file_schema_inner(
     if raise_if_empty {
         polars_ensure!(!bytes.is_empty(), NoData: "empty CSV");
     };
-    let mut lines = SplitLines::new(bytes, quote_char.unwrap_or(b'"'), eol_char).skip(*skip_rows);
+    let mut lines = SplitLines::new(bytes, quote_char.unwrap_or(b'"'), eol_char).skip(skip_rows);
 
     // get or create header names
     // when has_header is false, creates default column names with column_ prefix
@@ -218,7 +231,7 @@ fn infer_file_schema_inner(
     for (i, line) in (&mut lines).enumerate() {
         if !is_comment_line(line, comment_prefix) {
             first_line = Some(line);
-            *skip_rows += i;
+            skip_rows += i;
             break;
         }
     }
@@ -304,7 +317,7 @@ fn infer_file_schema_inner(
     };
     if !has_header {
         // re-init lines so that the header is included in type inference.
-        lines = SplitLines::new(bytes, quote_char.unwrap_or(b'"'), eol_char).skip(*skip_rows);
+        lines = SplitLines::new(bytes, quote_char.unwrap_or(b'"'), eol_char).skip(skip_rows);
     }
 
     let header_length = headers.len();
@@ -431,7 +444,6 @@ fn infer_file_schema_inner(
 
     // build schema from inference results
     for i in 0..header_length {
-        let possibilities = &column_types[i];
         let field_name = &headers[i];
 
         if let Some(schema_overwrite) = schema_overwrite {
@@ -450,27 +462,9 @@ fn infer_file_schema_inner(
             }
         }
 
-        // determine data type based on possible types
-        // if there are incompatible types, use DataType::String
-        match possibilities.len() {
-            1 => {
-                for dtype in possibilities.iter() {
-                    fields.push(Field::new(field_name, dtype.clone()));
-                }
-            },
-            2 => {
-                if possibilities.contains(&DataType::Int64)
-                    && possibilities.contains(&DataType::Float64)
-                {
-                    // we have an integer and double, fall down to double
-                    fields.push(Field::new(field_name, DataType::Float64));
-                } else {
-                    // default to String for conflicting datatypes (e.g bool and int)
-                    fields.push(Field::new(field_name, DataType::String));
-                }
-            },
-            _ => fields.push(Field::new(field_name, DataType::String)),
-        }
+        let possibilities = &column_types[i];
+        let dtype = finish_infer_field_schema(possibilities);
+        fields.push(Field::new(field_name, dtype));
     }
     // if there is a single line after the header without an eol
     // we copy the bytes add an eol and rerun this function
@@ -531,7 +525,7 @@ pub fn infer_file_schema(
     schema_overwrite: Option<&Schema>,
     // we take &mut because we maybe need to skip more rows dependent
     // on the schema inference
-    skip_rows: &mut usize,
+    skip_rows: usize,
     skip_rows_after_header: usize,
     comment_prefix: Option<&CommentPrefix>,
     quote_char: Option<u8>,

@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
 
+#[cfg(feature = "dtype-array")]
+use polars_utils::format_tuple;
+
 use super::*;
 #[cfg(feature = "object")]
 use crate::chunked_array::object::registry::ObjectRegistry;
@@ -25,6 +28,18 @@ pub enum UnknownKind {
     Any,
 }
 
+impl UnknownKind {
+    pub fn materialize(&self) -> Option<DataType> {
+        let dtype = match self {
+            UnknownKind::Int(v) => materialize_dyn_int(*v).dtype(),
+            UnknownKind::Float => DataType::Float64,
+            UnknownKind::Str => DataType::String,
+            UnknownKind::Any => return None,
+        };
+        Some(dtype)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum DataType {
     Boolean,
@@ -38,9 +53,9 @@ pub enum DataType {
     Int64,
     Float32,
     Float64,
-    #[cfg(feature = "dtype-decimal")]
     /// Fixed point decimal type optional precision and non-negative scale.
     /// This is backed by a signed 128-bit integer which allows for up to 38 significant digits.
+    #[cfg(feature = "dtype-decimal")]
     Decimal(Option<usize>, Option<usize>), // precision/scale; scale being None means "infer"
     /// String data
     String,
@@ -61,14 +76,14 @@ pub enum DataType {
     Array(Box<DataType>, usize),
     /// A nested list with a variable size in each row
     List(Box<DataType>),
-    #[cfg(feature = "object")]
     /// A generic type that can be used in a `Series`
     /// &'static str can be used to determine/set inner type
+    #[cfg(feature = "object")]
     Object(&'static str, Option<Arc<ObjectRegistry>>),
     Null,
-    #[cfg(feature = "dtype-categorical")]
     // The RevMapping has the internal state.
     // This is ignored with comparisons, hashing etc.
+    #[cfg(feature = "dtype-categorical")]
     Categorical(Option<Arc<RevMapping>>, CategoricalOrdering),
     #[cfg(feature = "dtype-categorical")]
     Enum(Option<Arc<RevMapping>>, CategoricalOrdering),
@@ -125,6 +140,7 @@ impl PartialEq for DataType {
                     (UnknownKind::Int(_), UnknownKind::Int(_)) => true,
                     _ => l == r,
                 },
+                // TODO: Add Decimal equality
                 _ => std::mem::discriminant(self) == std::mem::discriminant(other),
             }
         }
@@ -174,6 +190,25 @@ impl DataType {
         }
     }
 
+    #[cfg(feature = "dtype-array")]
+    /// Get the full shape of a multidimensional array.
+    pub fn get_shape(&self) -> Option<Vec<usize>> {
+        fn get_shape_impl(dt: &DataType, shape: &mut Vec<usize>) {
+            if let DataType::Array(inner, size) = dt {
+                shape.push(*size);
+                get_shape_impl(inner, shape);
+            }
+        }
+
+        if let DataType::Array(inner, size) = self {
+            let mut shape = vec![*size];
+            get_shape_impl(inner, &mut shape);
+            Some(shape)
+        } else {
+            None
+        }
+    }
+
     /// Get the inner data type of a nested type.
     pub fn inner_dtype(&self) -> Option<&DataType> {
         match self {
@@ -182,6 +217,30 @@ impl DataType {
             DataType::Array(inner, _) => Some(inner),
             _ => None,
         }
+    }
+
+    /// Get the absolute inner data type of a nested type.
+    pub fn leaf_dtype(&self) -> &DataType {
+        let mut prev = self;
+        while let Some(dtype) = prev.inner_dtype() {
+            prev = dtype
+        }
+        prev
+    }
+
+    /// Cast the leaf types of Lists/Arrays and keep the nesting.
+    pub fn cast_leaf(&self, to: DataType) -> DataType {
+        use DataType::*;
+        match self {
+            List(inner) => List(Box::new(inner.cast_leaf(to))),
+            #[cfg(feature = "dtype-array")]
+            Array(inner, size) => Array(Box::new(inner.cast_leaf(to)), *size),
+            _ => to,
+        }
+    }
+
+    pub fn implode(self) -> DataType {
+        DataType::List(Box::new(self))
     }
 
     /// Convert to the physical data type
@@ -646,7 +705,17 @@ impl Display for DataType {
             DataType::Duration(tu) => return write!(f, "duration[{tu}]"),
             DataType::Time => "time",
             #[cfg(feature = "dtype-array")]
-            DataType::Array(tp, size) => return write!(f, "array[{tp}, {size}]"),
+            DataType::Array(_, _) => {
+                let tp = self.leaf_dtype();
+
+                let dims = self.get_shape().unwrap();
+                let shape = if dims.len() == 1 {
+                    format!("{}", dims[0])
+                } else {
+                    format_tuple!(dims)
+                };
+                return write!(f, "array[{tp}, {}]", shape);
+            },
             DataType::List(tp) => return write!(f, "list[{tp}]"),
             #[cfg(feature = "object")]
             DataType::Object(s, _) => s,

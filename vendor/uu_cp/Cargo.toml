@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "uu_cp"
-version = "0.0.26"
+version = "0.0.27"
 authors = [
     "Jordy Dickinson <jordy.dickinson@gmail.com>",
     "Joshua S. Miller <jsmiller@uchicago.edu>",
@@ -47,10 +47,10 @@ features = [
 ]
 
 [dependencies.filetime]
-version = "0.2"
+version = "0.2.23"
 
 [dependencies.indicatif]
-version = "0.17"
+version = "0.17.8"
 
 [dependencies.libc]
 version = "0.2.153"
@@ -59,7 +59,7 @@ version = "0.2.153"
 version = "2.0.1"
 
 [dependencies.selinux]
-version = "0.4"
+version = "0.4.4"
 optional = true
 
 [dependencies.uucore]

@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "polars"
-version = "0.40.0"
+version = "0.41.2"
 authors = ["Ritchie Vink <ritchie46@gmail.com>"]
 build = "build.rs"
 autobins = false
@@ -46,7 +46,7 @@ name = "it"
 path = "tests/it/main.rs"
 
 [dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -60,50 +60,50 @@ default-features = false
 package = "polars-arrow"
 
 [dependencies.polars-core]
-version = "0.40.0"
+version = "0.41.2"
 features = ["algorithm_group_by"]
 default-features = false
 
 [dependencies.polars-error]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-io]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-lazy]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-ops]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-parquet]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dependencies.polars-plan]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-sql]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-time]
-version = "0.40.0"
+version = "0.41.2"
 optional = true
 default-features = false
 
 [dependencies.polars-utils]
-version = "0.40.0"
+version = "0.41.2"
 default-features = false
 
 [dev-dependencies.ahash]
@@ -114,7 +114,7 @@ version = "0.16"
 features = ["snappy"]
 
 [dev-dependencies.arrow]
-version = "0.40.0"
+version = "0.41.2"
 features = [
     "compute_aggregate",
     "compute_arithmetics",
@@ -258,7 +258,6 @@ cum_agg = [
 cumulative_eval = ["polars-lazy?/cumulative_eval"]
 cutqcut = ["polars-lazy?/cutqcut"]
 dataframe_arithmetic = ["polars-core/dataframe_arithmetic"]
-date_offset = ["polars-lazy?/date_offset"]
 decompress = ["polars-io/decompress"]
 decompress-fast = ["polars-io/decompress-fast"]
 default = [
@@ -315,6 +314,7 @@ docs-selection = [
     "rolling_window",
     "rolling_window_by",
     "interpolate",
+    "interpolate_by",
     "diff",
     "rank",
     "range",
@@ -475,6 +475,10 @@ interpolate = [
     "polars-ops/interpolate",
     "polars-lazy?/interpolate",
 ]
+interpolate_by = [
+    "polars-ops/interpolate_by",
+    "polars-lazy?/interpolate_by",
+]
 ipc = [
     "polars-io",
     "polars-io/ipc",
@@ -548,6 +552,8 @@ moment = [
     "polars-ops/moment",
     "polars-lazy?/moment",
 ]
+month_end = ["polars-lazy?/month_end"]
+month_start = ["polars-lazy?/month_start"]
 ndarray = ["polars-core/ndarray"]
 nightly = [
     "polars-core/nightly",
@@ -561,6 +567,7 @@ object = [
     "polars-lazy?/object",
     "polars-io/object",
 ]
+offset_by = ["polars-lazy?/offset_by"]
 parquet = [
     "polars-io",
     "polars-lazy?/parquet",
@@ -701,6 +708,7 @@ timezones = [
     "polars-core/timezones",
     "polars-lazy?/timezones",
     "polars-io/timezones",
+    "polars-ops/timezones",
     "polars-sql?/timezones",
 ]
 to_dummies = ["polars-ops/to_dummies"]
@@ -713,6 +721,6 @@ unique_counts = [
 ]
 zip_with = ["polars-core/zip_with"]
 
-[target."cfg(target_family = \"wasm\")".dependencies.getrandom]
+[target.'cfg(target_family = "wasm")'.dependencies.getrandom]
 version = "0.2"
 features = ["js"]

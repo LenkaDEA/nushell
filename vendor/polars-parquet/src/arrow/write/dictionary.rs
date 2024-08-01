@@ -9,6 +9,7 @@ use super::binary::{
 use super::fixed_len_bytes::{
     build_statistics as fixed_binary_build_statistics, encode_plain as fixed_binary_encode_plain,
 };
+use super::pages::PrimitiveNested;
 use super::primitive::{
     build_statistics as primitive_build_statistics, encode_plain as primitive_encode_plain,
 };
@@ -19,7 +20,7 @@ use crate::parquet::encoding::hybrid_rle::encode;
 use crate::parquet::encoding::Encoding;
 use crate::parquet::page::{DictPage, Page};
 use crate::parquet::schema::types::PrimitiveType;
-use crate::parquet::statistics::{serialize_statistics, ParquetStatistics};
+use crate::parquet::statistics::ParquetStatistics;
 use crate::write::DynIter;
 
 pub(crate) fn encode_as_dictionary_optional(
@@ -142,8 +143,8 @@ fn serialize_keys<K: DictionaryKey>(
 
     let mut nested = nested.to_vec();
     let array = array.clone().sliced(start, len);
-    if let Some(Nested::Primitive(_, _, c)) = nested.last_mut() {
-        *c = len;
+    if let Some(Nested::Primitive(PrimitiveNested { ref mut length, .. })) = nested.last_mut() {
+        *length = len;
     } else {
         unreachable!("")
     }
@@ -190,11 +191,14 @@ macro_rules! dyn_prim {
 
         let buffer = primitive_encode_plain::<$from, $to>(values, false, vec![]);
 
-        let stats: Option<ParquetStatistics> = if $options.write_statistics {
-            let mut stats = primitive_build_statistics::<$from, $to>(values, $type_.clone());
+        let stats: Option<ParquetStatistics> = if !$options.statistics.is_empty() {
+            let mut stats = primitive_build_statistics::<$from, $to>(
+                values,
+                $type_.clone(),
+                &$options.statistics,
+            );
             stats.null_count = Some($array.null_count() as i64);
-            let stats = serialize_statistics(&stats);
-            Some(stats)
+            Some(stats.serialize())
         } else {
             None
         };
@@ -241,8 +245,12 @@ pub fn array_to_pages<K: DictionaryKey>(
 
                         let mut buffer = vec![];
                         binary_encode_plain::<i64>(array, &mut buffer);
-                        let stats = if options.write_statistics {
-                            Some(binary_build_statistics(array, type_.clone()))
+                        let stats = if options.has_statistics() {
+                            Some(binary_build_statistics(
+                                array,
+                                type_.clone(),
+                                &options.statistics,
+                            ))
                         } else {
                             None
                         };
@@ -257,8 +265,12 @@ pub fn array_to_pages<K: DictionaryKey>(
                         let mut buffer = vec![];
                         binview::encode_plain(array, &mut buffer);
 
-                        let stats = if options.write_statistics {
-                            Some(binview::build_statistics(array, type_.clone()))
+                        let stats = if options.has_statistics() {
+                            Some(binview::build_statistics(
+                                array,
+                                type_.clone(),
+                                &options.statistics,
+                            ))
                         } else {
                             None
                         };
@@ -274,8 +286,12 @@ pub fn array_to_pages<K: DictionaryKey>(
                         let mut buffer = vec![];
                         binview::encode_plain(&array, &mut buffer);
 
-                        let stats = if options.write_statistics {
-                            Some(binview::build_statistics(&array, type_.clone()))
+                        let stats = if options.has_statistics() {
+                            Some(binview::build_statistics(
+                                &array,
+                                type_.clone(),
+                                &options.statistics,
+                            ))
                         } else {
                             None
                         };
@@ -286,8 +302,12 @@ pub fn array_to_pages<K: DictionaryKey>(
 
                         let mut buffer = vec![];
                         binary_encode_plain::<i64>(values, &mut buffer);
-                        let stats = if options.write_statistics {
-                            Some(binary_build_statistics(values, type_.clone()))
+                        let stats = if options.has_statistics() {
+                            Some(binary_build_statistics(
+                                values,
+                                type_.clone(),
+                                &options.statistics,
+                            ))
                         } else {
                             None
                         };
@@ -297,9 +317,13 @@ pub fn array_to_pages<K: DictionaryKey>(
                         let mut buffer = vec![];
                         let array = array.values().as_any().downcast_ref().unwrap();
                         fixed_binary_encode_plain(array, false, &mut buffer);
-                        let stats = if options.write_statistics {
-                            let stats = fixed_binary_build_statistics(array, type_.clone());
-                            Some(serialize_statistics(&stats))
+                        let stats = if options.has_statistics() {
+                            let stats = fixed_binary_build_statistics(
+                                array,
+                                type_.clone(),
+                                &options.statistics,
+                            );
+                            Some(stats.serialize())
                         } else {
                             None
                         };

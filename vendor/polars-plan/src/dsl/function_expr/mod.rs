@@ -62,7 +62,7 @@ mod sign;
 mod strings;
 #[cfg(feature = "dtype-struct")]
 mod struct_;
-#[cfg(any(feature = "temporal", feature = "date_offset"))]
+#[cfg(feature = "temporal")]
 mod temporal;
 #[cfg(feature = "trigonometry")]
 pub mod trigonometry;
@@ -92,7 +92,7 @@ pub(super) use self::business::BusinessFunction;
 #[cfg(feature = "dtype-categorical")]
 pub use self::cat::CategoricalFunction;
 #[cfg(feature = "temporal")]
-pub(super) use self::datetime::TemporalFunction;
+pub use self::datetime::TemporalFunction;
 pub use self::pow::PowFunction;
 #[cfg(feature = "range")]
 pub(super) use self::range::RangeFunction;
@@ -103,7 +103,7 @@ pub(super) use self::rolling_by::RollingFunctionBy;
 #[cfg(feature = "strings")]
 pub use self::strings::StringFunction;
 #[cfg(feature = "dtype-struct")]
-pub(crate) use self::struct_::StructFunction;
+pub use self::struct_::StructFunction;
 #[cfg(feature = "trigonometry")]
 pub(super) use self::trigonometry::TrigonometricFunction;
 use super::*;
@@ -148,8 +148,6 @@ pub enum FunctionExpr {
     SearchSorted(SearchSortedSide),
     #[cfg(feature = "range")]
     Range(RangeFunction),
-    #[cfg(feature = "date_offset")]
-    DateOffset,
     #[cfg(feature = "trigonometry")]
     Trigonometry(TrigonometricFunction),
     #[cfg(feature = "trigonometry")]
@@ -172,7 +170,7 @@ pub enum FunctionExpr {
     Skew(bool),
     #[cfg(feature = "moment")]
     Kurtosis(bool, bool),
-    Reshape(Vec<i64>),
+    Reshape(Vec<i64>, NestedType),
     #[cfg(feature = "repeat_by")]
     RepeatBy,
     ArgUnique,
@@ -190,11 +188,11 @@ pub enum FunctionExpr {
     AsStruct,
     #[cfg(feature = "top_k")]
     TopK {
-        sort_options: SortOptions,
+        descending: bool,
     },
     #[cfg(feature = "top_k")]
     TopKBy {
-        sort_options: SortMultipleOptions,
+        descending: Vec<bool>,
     },
     #[cfg(feature = "cum_agg")]
     CumCount {
@@ -221,6 +219,8 @@ pub enum FunctionExpr {
     ValueCounts {
         sort: bool,
         parallel: bool,
+        name: String,
+        normalize: bool,
     },
     #[cfg(feature = "unique_counts")]
     UniqueCounts,
@@ -234,6 +234,8 @@ pub enum FunctionExpr {
     PctChange,
     #[cfg(feature = "interpolate")]
     Interpolate(InterpolationMethod),
+    #[cfg(feature = "interpolate_by")]
+    InterpolateBy,
     #[cfg(feature = "log")]
     Entropy {
         base: f64,
@@ -338,7 +340,9 @@ pub enum FunctionExpr {
         options: EWMOptions,
     },
     #[cfg(feature = "replace")]
-    Replace {
+    Replace,
+    #[cfg(feature = "replace")]
+    ReplaceStrict {
         return_dtype: Option<DataType>,
     },
     GatherEvery {
@@ -390,6 +394,8 @@ impl Hash for FunctionExpr {
             Diff(_, null_behavior) => null_behavior.hash(state),
             #[cfg(feature = "interpolate")]
             Interpolate(f) => f.hash(state),
+            #[cfg(feature = "interpolate_by")]
+            InterpolateBy => {},
             #[cfg(feature = "ffi_plugin")]
             FfiPlugin {
                 lib,
@@ -408,8 +414,6 @@ impl Hash for FunctionExpr {
             Abs => {},
             Negate => {},
             NullCount => {},
-            #[cfg(feature = "date_offset")]
-            DateOffset => {},
             #[cfg(feature = "arg_where")]
             ArgWhere => {},
             #[cfg(feature = "trigonometry")]
@@ -447,7 +451,7 @@ impl Hash for FunctionExpr {
                 has_max.hash(state);
             },
             #[cfg(feature = "top_k")]
-            TopK { sort_options } => sort_options.hash(state),
+            TopK { descending } => descending.hash(state),
             #[cfg(feature = "cum_agg")]
             CumCount { reverse } => reverse.hash(state),
             #[cfg(feature = "cum_agg")]
@@ -459,9 +463,16 @@ impl Hash for FunctionExpr {
             #[cfg(feature = "cum_agg")]
             CumMax { reverse } => reverse.hash(state),
             #[cfg(feature = "dtype-struct")]
-            ValueCounts { sort, parallel } => {
+            ValueCounts {
+                sort,
+                parallel,
+                name,
+                normalize,
+            } => {
                 sort.hash(state);
                 parallel.hash(state);
+                name.hash(state);
+                normalize.hash(state);
             },
             #[cfg(feature = "unique_counts")]
             UniqueCounts => {},
@@ -511,8 +522,9 @@ impl Hash for FunctionExpr {
                 left_closed.hash(state);
                 include_breaks.hash(state);
             },
-            Reshape(dims) => {
+            Reshape(dims, nested) => {
                 dims.hash(state);
+                nested.hash(state);
             },
             #[cfg(feature = "repeat_by")]
             RepeatBy => {},
@@ -557,14 +569,16 @@ impl Hash for FunctionExpr {
                 include_breakpoint.hash(state);
             },
             #[cfg(feature = "replace")]
-            Replace { return_dtype } => return_dtype.hash(state),
+            Replace => {},
+            #[cfg(feature = "replace")]
+            ReplaceStrict { return_dtype } => return_dtype.hash(state),
             FillNullWithStrategy(strategy) => strategy.hash(state),
             GatherEvery { n, offset } => (n, offset).hash(state),
             #[cfg(feature = "reinterpret")]
             Reinterpret(signed) => signed.hash(state),
             ExtendConstant => {},
             #[cfg(feature = "top_k")]
-            TopKBy { sort_options } => sort_options.hash(state),
+            TopKBy { descending } => descending.hash(state),
         }
     }
 }
@@ -604,8 +618,6 @@ impl Display for FunctionExpr {
             SearchSorted(_) => "search_sorted",
             #[cfg(feature = "range")]
             Range(func) => return write!(f, "{func}"),
-            #[cfg(feature = "date_offset")]
-            DateOffset => "dt.offset_by",
             #[cfg(feature = "trigonometry")]
             Trigonometry(func) => return write!(f, "{func}"),
             #[cfg(feature = "trigonometry")]
@@ -639,9 +651,7 @@ impl Display for FunctionExpr {
             #[cfg(feature = "dtype-struct")]
             AsStruct => "as_struct",
             #[cfg(feature = "top_k")]
-            TopK {
-                sort_options: SortOptions { descending, .. },
-            } => {
+            TopK { descending } => {
                 if *descending {
                     "bottom_k"
                 } else {
@@ -676,6 +686,8 @@ impl Display for FunctionExpr {
             PctChange => "pct_change",
             #[cfg(feature = "interpolate")]
             Interpolate(_) => "interpolate",
+            #[cfg(feature = "interpolate_by")]
+            InterpolateBy => "interpolate_by",
             #[cfg(feature = "log")]
             Entropy { .. } => "entropy",
             #[cfg(feature = "log")]
@@ -714,7 +726,7 @@ impl Display for FunctionExpr {
             Cut { .. } => "cut",
             #[cfg(feature = "cutqcut")]
             QCut { .. } => "qcut",
-            Reshape(_) => "reshape",
+            Reshape(_, _) => "reshape",
             #[cfg(feature = "repeat_by")]
             RepeatBy => "repeat_by",
             #[cfg(feature = "rle")]
@@ -744,7 +756,9 @@ impl Display for FunctionExpr {
             #[cfg(feature = "hist")]
             Hist { .. } => "hist",
             #[cfg(feature = "replace")]
-            Replace { .. } => "replace",
+            Replace => "replace",
+            #[cfg(feature = "replace")]
+            ReplaceStrict { .. } => "replace_strict",
             FillNullWithStrategy(_) => "fill_null_with_strategy",
             GatherEvery { .. } => "gather_every",
             #[cfg(feature = "reinterpret")]
@@ -889,11 +903,6 @@ impl From<FunctionExpr> for SpecialEq<Arc<dyn SeriesUdf>> {
             #[cfg(feature = "range")]
             Range(func) => func.into(),
 
-            #[cfg(feature = "date_offset")]
-            DateOffset => {
-                map_as_slice!(temporal::date_offset)
-            },
-
             #[cfg(feature = "trigonometry")]
             Trigonometry(trig_function) => {
                 map!(trigonometry::apply_trigonometric_function, trig_function)
@@ -976,11 +985,11 @@ impl From<FunctionExpr> for SpecialEq<Arc<dyn SeriesUdf>> {
                 map_as_slice!(coerce::as_struct)
             },
             #[cfg(feature = "top_k")]
-            TopK { sort_options } => {
-                map_as_slice!(top_k, sort_options)
+            TopK { descending } => {
+                map_as_slice!(top_k, descending)
             },
             #[cfg(feature = "top_k")]
-            TopKBy { sort_options } => map_as_slice!(top_k_by, sort_options.clone()),
+            TopKBy { descending } => map_as_slice!(top_k_by, descending.clone()),
             Shift => map_as_slice!(shift_and_fill::shift),
             #[cfg(feature = "cum_agg")]
             CumCount { reverse } => map!(cum::cum_count, reverse),
@@ -993,7 +1002,18 @@ impl From<FunctionExpr> for SpecialEq<Arc<dyn SeriesUdf>> {
             #[cfg(feature = "cum_agg")]
             CumMax { reverse } => map!(cum::cum_max, reverse),
             #[cfg(feature = "dtype-struct")]
-            ValueCounts { sort, parallel } => map!(dispatch::value_counts, sort, parallel),
+            ValueCounts {
+                sort,
+                parallel,
+                name,
+                normalize,
+            } => map!(
+                dispatch::value_counts,
+                sort,
+                parallel,
+                name.clone(),
+                normalize
+            ),
             #[cfg(feature = "unique_counts")]
             UniqueCounts => map!(dispatch::unique_counts),
             Reverse => map!(dispatch::reverse),
@@ -1008,6 +1028,10 @@ impl From<FunctionExpr> for SpecialEq<Arc<dyn SeriesUdf>> {
             #[cfg(feature = "interpolate")]
             Interpolate(method) => {
                 map!(dispatch::interpolate, method)
+            },
+            #[cfg(feature = "interpolate_by")]
+            InterpolateBy => {
+                map_as_slice!(dispatch::interpolate_by)
             },
             #[cfg(feature = "log")]
             Entropy { base, normalize } => map!(log::entropy, base, normalize),
@@ -1039,7 +1063,7 @@ impl From<FunctionExpr> for SpecialEq<Arc<dyn SeriesUdf>> {
             PeakMax => map!(peaks::peak_max),
             #[cfg(feature = "repeat_by")]
             RepeatBy => map_as_slice!(dispatch::repeat_by),
-            Reshape(dims) => map!(dispatch::reshape, dims.clone()),
+            Reshape(dims, nested) => map!(dispatch::reshape, &dims, &nested),
             #[cfg(feature = "cutqcut")]
             Cut {
                 breaks,
@@ -1120,9 +1144,14 @@ impl From<FunctionExpr> for SpecialEq<Arc<dyn SeriesUdf>> {
             #[cfg(feature = "ewma")]
             EwmVar { options } => map!(ewm::ewm_var, options),
             #[cfg(feature = "replace")]
-            Replace { return_dtype } => {
-                map_as_slice!(dispatch::replace, return_dtype.clone())
+            Replace => {
+                map_as_slice!(dispatch::replace)
             },
+            #[cfg(feature = "replace")]
+            ReplaceStrict { return_dtype } => {
+                map_as_slice!(dispatch::replace_strict, return_dtype.clone())
+            },
+
             FillNullWithStrategy(strategy) => map!(dispatch::fill_null_with_strategy, strategy),
             GatherEvery { n, offset } => map!(dispatch::gather_every, n, offset),
             #[cfg(feature = "reinterpret")]

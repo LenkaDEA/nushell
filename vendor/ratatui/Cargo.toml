@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.74.0"
 name = "ratatui"
-version = "0.26.2"
+version = "0.26.3"
 authors = [
     "Florian Dehau <work@fdehau.com>",
     "The Ratatui Developers",
@@ -28,6 +28,7 @@ exclude = [
 ]
 autoexamples = true
 description = "A library that's all about cooking up terminal user interfaces"
+homepage = "https://ratatui.rs"
 documentation = "https://docs.rs/ratatui/latest/ratatui/"
 readme = "README.md"
 keywords = [
@@ -35,6 +36,7 @@ keywords = [
     "terminal",
     "dashboard",
 ]
+categories = ["command-line-interface"]
 license = "MIT"
 repository = "https://github.com/ratatui-org/ratatui"
 
@@ -148,6 +150,11 @@ doc-scrape-examples = true
 required-features = ["crossterm"]
 
 [[example]]
+name = "minimal"
+doc-scrape-examples = false
+required-features = ["crossterm"]
+
+[[example]]
 name = "modifiers"
 doc-scrape-examples = false
 required-features = ["crossterm"]
@@ -215,6 +222,10 @@ name = "block"
 harness = false
 
 [[bench]]
+name = "line"
+harness = false
+
+[[bench]]
 name = "list"
 harness = false
 
@@ -242,9 +253,6 @@ optional = true
 [dependencies.document-features]
 version = "0.2.7"
 optional = true
-
-[dependencies.indoc]
-version = "2.0"
 
 [dependencies.itertools]
 version = "0.12"
@@ -283,6 +291,9 @@ optional = true
 [dependencies.unicode-segmentation]
 version = "1.10"
 
+[dependencies.unicode-truncate]
+version = "1"
+
 [dependencies.unicode-width]
 version = "0.1"
 
@@ -294,11 +305,6 @@ version = "0.1.12"
 
 [dev-dependencies.better-panic]
 version = "0.3.0"
-
-[dev-dependencies.cargo-husky]
-version = "1.5.0"
-features = ["user-hooks"]
-default-features = false
 
 [dev-dependencies.color-eyre]
 version = "0.6.2"
@@ -316,6 +322,9 @@ version = "1.1"
 [dev-dependencies.font8x8]
 version = "0.3.1"
 
+[dev-dependencies.indoc]
+version = "2"
+
 [dev-dependencies.palette]
 version = "0.7.3"
 
@@ -329,7 +338,7 @@ version = "0.8.5"
 version = "0.3.1"
 
 [dev-dependencies.rstest]
-version = "0.18.2"
+version = "0.19.0"
 
 [dev-dependencies.serde_json]
 version = "1.0.109"
@@ -387,6 +396,10 @@ string_lit_chars_any = "warn"
 string_to_string = "warn"
 use_self = "warn"
 wildcard_imports = "allow"
+
+[lints.clippy.cargo]
+level = "warn"
+priority = -1
 
 [lints.clippy.pedantic]
 level = "warn"
